@@ -1,6 +1,6 @@
 # Естественный Отбор: Симуляция Эволюции Клеток
 
-![Пример симуляции](https://example.com/simulation_screenshot.png)
+![Пример симуляции](https://i.ibb.co/zFsWtWS/image.png)
 
 ## Описание
 
