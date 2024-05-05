@@ -8,7 +8,7 @@
 
 ## Скачать
 
-- [Windows](https://drive.google.com/file/d/1kpfOS16x1HxIdx-DxOBpm8YwP6-FWtcw/view?usp=sharing)
+- [Windows](https://github.com/Semka2014/NeuCells/raw/master/NeuCells_windows.zip)
 - Linux (в настоящее время недоступно)
 - macOS (в настоящее время недоступно)
 
