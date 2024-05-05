@@ -18,16 +18,16 @@ namespace NeuCells
     {
         static float[] s = new float[8];
         static float[] f = new float[8];
-        public static int width = 100, height = 100;
+        public static int width, height;
         public static int sizeX, sizeY;
-        public static float[,] oxmap = new float[width, height];
+        public static float[,] oxmap;
         public static float[,] boxmap;
         public static bool[,] map;
 
         public static List<cell> cells, bcells;
 
-        public static cell[,] cmap = new cell[width, height];
-        public static food[,] fmap = new food[width, height];
+        public static cell[,] cmap;
+        public static food[,] fmap;
 
         static Random rnd = new Random();
         static SDL.SDL_Rect rect2 = new SDL.SDL_Rect();
@@ -35,7 +35,7 @@ namespace NeuCells
         static IntPtr window, renderer;
         static int step, vismode;
         static bool running, visox;
-        static int seed = -1;
+        static int seed;
 
         static StringBuilder fr;
 
@@ -153,19 +153,19 @@ namespace NeuCells
             for (int x = 0; x < width; x++)
                 for (int y = 0; y < height; y++)
                 {
-                    oxmap[x, y] = rnd.Next(30, 90) / 100F;
+                    oxmap[x, y] = rnd.Next((int)se.GetConst("кислородом от%"), (int)se.GetConst("кислородом до%")) / 100F;
                 }
 
             for (int x = 0; x < width; x++)
             {
                 for (int y = 0; y < height; y++)
                 {
-                    if (rnd.Next(100) < 20)
+                    if (rnd.Next(100) < se.GetConst("клетка%"))
                     {
                         cmap[x, y] = new cell(x, y);
                         cells.Add(cmap[x, y]);
                     }
-                    else if (rnd.Next(100) < 30)
+                    else if (rnd.Next(100) < se.GetConst("еда%"))
                         fmap[x, y] = new food(x, y, 10);
                 }
             }
@@ -173,9 +173,17 @@ namespace NeuCells
 
         static void Main(string[] args)
         {
+            se.Load();
             SDL.SDL_Init(SDL.SDL_INIT_VIDEO);
             window = SDL.SDL_CreateWindow("Нейронные клетки", 100, 100, 700, 501, SDL.SDL_WindowFlags.SDL_WINDOW_RESIZABLE);
             renderer = SDL.SDL_CreateRenderer(window, 0, SDL.SDL_RendererFlags.SDL_RENDERER_SOFTWARE);
+
+            seed = (int)se.GetConst("стандартный сид");
+            width = (int)se.GetConst("ширина");
+            height = (int)se.GetConst("высота");
+            cmap = new cell[width, height];
+            fmap = new food[width, height];
+            oxmap = new float[width, height];
 
             RandomFill();
 
@@ -422,6 +430,73 @@ namespace NeuCells
             }
         }
 
+        public static class se
+        {
+            public static string Path = "settings";
+            public static Dictionary<string, bool> cons = new Dictionary<string, bool>();
+            public static Dictionary<string, float> num = new Dictionary<string, float>();
+            public static Dictionary<string, float> plus = new Dictionary<string, float>();
+            public static Dictionary<string, byte> ox = new Dictionary<string, byte>();
+            public static void Load()
+            {
+                string[] f = File.ReadAllLines(Path);
+                foreach (string s in f)
+                {
+                    if (s.Length != 0 && s[0] != '#')
+                    {
+                        string name = s.Split(':')[0];
+                        string exp = s.Split(':')[1];
+                        float n = float.Parse(exp.Split('+')[0]);
+
+                        bool co = !s.Contains("(") && !s.Contains("z") && !s.Contains("x");
+
+                        cons.Add(name, co);
+                        num.Add(name, n);
+
+                        if (!co)
+                        {
+                            if (exp.Contains("("))
+                            {
+                                plus.Add(name, float.Parse(exp.Split('(')[1].Split(')')[0]));
+                            }
+                            else
+                                plus.Add(name, 0);
+
+                            if (exp.Contains("z"))
+                                ox.Add(name, 1);
+                            else if (exp.Contains("x"))
+                                ox.Add(name, 2);
+                            else
+                                ox.Add(name, 0);
+                        }
+                    }
+                }
+            }
+
+            public static float GetConst(string name)
+            {
+                if (cons[name])
+                    return num[name];
+                return 0;
+            }
+
+            public static float GetV(string name, cell cl)
+            {
+                float V = num[name];
+                if (!cons[name])
+                {
+                    if (ox[name] == 1)
+                        V *= oxmap[cl.Pos.x, cl.Pos.y];
+                    else if (ox[name] == 2)
+                        V *= 1F - oxmap[cl.Pos.x, cl.Pos.y];
+                    V += plus[name];
+                }
+
+                return V;
+            }
+
+        }//всё для настроек
+
         public class UNN
         {
             private float[][] layers = new float[6 /* количество слоёв*/][];
@@ -519,7 +594,7 @@ namespace NeuCells
 
             private void mutation(UNN nn)
             {
-                bool mt = rnd.Next(100) < 1;
+                bool mt = rnd.Next(100) < se.GetConst("вероятность мутации%");
 
                 for (int i = 1; i < neurons.Length; i++)
                 {
@@ -527,7 +602,7 @@ namespace NeuCells
                     {
                         for (int k = 0; k < neurons[i - 1]; k++)
                         {
-                            if (rnd.Next(100) < 10 && mt)
+                            if (rnd.Next(100) < se.GetConst("серьёзность мутации%") && mt)
                             {
                                 weights[i - 1][k, j] = (rnd.Next(1000) - 500) / 1000.0F;
                                 mut++;
@@ -586,7 +661,7 @@ namespace NeuCells
             {
                 Pos.y = y;
                 Pos.x = x;
-                nrj = parent.nrj;
+                nrj = se.GetV("сыну давать энергии", this);
                 ph = parent.ph;
                 time = 0;
 
@@ -598,13 +673,13 @@ namespace NeuCells
                 time++;
 
                 nrj -= 0.5F;
-                //oxmap[Pos.x, Pos.y] -= 0.001F;
+                oxmap[Pos.x, Pos.y] -= 0;
 
                 if (nrj <= 0)
                 {
-                    fmap[Pos.x, Pos.y] = new food(Pos, 7);
+                    fmap[Pos.x, Pos.y] = new food(Pos, se.GetV("энергия в трупе", this));
                     cmap[Pos.x, Pos.y] = null;
-                    oxmap[Pos.x, Pos.y] -= 0.05F;
+                    oxmap[Pos.x, Pos.y] -= se.GetV("потеря кислорода при смерти", this);
                     return false;
                 } //смерть
 
@@ -706,10 +781,10 @@ namespace NeuCells
                             //oxmap[Pos.x, Pos.y] -= 1F;
                             return true; //ждать
                         case 1:
-                            if (oxmap[Pos.x, Pos.y] < 0.9F)
+                            if (oxmap[Pos.x, Pos.y] < se.GetV("фотосинтезировать можно при кислороде меньше", this))
                             {
-                                nrj += 5F * (0.9F - oxmap[Pos.x, Pos.y]);
-                                oxmap[Pos.x, Pos.y] += 0.02F;
+                                nrj += se.GetV("энергия от фотосинтеза", this);
+                                oxmap[Pos.x, Pos.y] += se.GetV("вырабатывание кислорода от фотосинтеза", this);
                                 if (ph > 0.01)
                                     ph -= 0.01F;
                                 return true;
@@ -767,15 +842,15 @@ namespace NeuCells
                                 {
                                     case 2:
                                         {
-                                            if (s[cmds[i] - fix] != 0.1F && oxmap[Pos.x, Pos.y] > 0.05F)
+                                            if (s[cmds[i] - fix] != 0.1F && oxmap[Pos.x, Pos.y] > se.GetV("потеря кислорода при кусании", this))
                                             {
 
                                                 int cx = (Pos.x + xx + width) % width;
                                                 int cy = (Pos.y + yy + height) % height;
 
-                                                nrj += Math.Min(cmap[cx, cy].nrj, 8) * oxmap[Pos.x, Pos.y];
-                                                cmap[cx, cy].nrj -= Math.Min(cmap[cx, cy].nrj, 8);
-                                                oxmap[Pos.x, Pos.y] -= 0.01F;
+                                                nrj += Math.Min(cmap[cx, cy].nrj * se.GetV("получать энергии2", this), se.GetV("получать энергии", this));
+                                                cmap[cx, cy].nrj -= Math.Min(cmap[cx, cy].nrj * se.GetV("забирать энергии2", this), se.GetV("забирать энергии", this));
+                                                oxmap[Pos.x, Pos.y] -= se.GetV("потеря кислорода при кусании", this);
 
                                                 if (ph < 0.99F)
                                                     ph += 0.01F;
@@ -786,21 +861,22 @@ namespace NeuCells
                                         break; //кусать
                                     case 10:
                                         {
-                                            if (s[cmds[i] - fix] == 0.1F)
+                                            if (s[cmds[i] - fix] == 0.1F && oxmap[Pos.x, Pos.y] > se.GetV("тратить кислород при ходьбе", this))
                                             {
                                                 Pos.x = (Pos.x + xx + width) % width;
                                                 Pos.y = (Pos.y + yy + height) % height;
 
-                                                if (f[cmds[i] - fix] == 1 && oxmap[Pos.x, Pos.y] > 0.05F)
+                                                if (f[cmds[i] - fix] == 1)
                                                 {
-                                                    nrj += fmap[Pos.x, Pos.y].nrj * oxmap[Pos.x, Pos.y];
-                                                    oxmap[Pos.x, Pos.y] -= 0.01F;
+                                                    nrj += fmap[Pos.x, Pos.y].nrj * se.GetV("получать энергии от еды", this);
+                                                    oxmap[Pos.x, Pos.y] -= se.GetV("тратить кислород при поедании", this);
                                                     fmap[Pos.x, Pos.y] = null;
 
                                                     if (ph < 0.99F)
                                                         ph += 0.01F;
                                                 }
 
+                                                oxmap[Pos.x, Pos.y] -= se.GetV("тратить кислород при ходьбе", this);
                                                 cmap[Pos.x, Pos.y] = this;
                                                 cmap[(Pos.x - xx + width) % width, (Pos.y - yy + height) % height] = null;
 
@@ -810,13 +886,13 @@ namespace NeuCells
                                         break; //ходить
                                     case 18:
                                         {
-                                            if (s[cmds[i] - fix] == 0.1F && f[cmds[i] - fix] == 0.1F && oxmap[Pos.x, Pos.y] > 0.07)
+                                            if (s[cmds[i] - fix] == 0.1F && f[cmds[i] - fix] == 0.1F && oxmap[Pos.x, Pos.y] > se.GetV("тратить кислород на размножение", this))
                                             {
                                                 int cx = (Pos.x + xx + width) % width;
                                                 int cy = (Pos.y + yy + height) % height;
 
-                                                nrj -= 10 * (1 - oxmap[Pos.x, Pos.y]);
-                                                oxmap[Pos.x, Pos.y] -= 0.05F;
+                                                nrj -= se.GetV("тратить энергии на размножение", this);
+                                                oxmap[Pos.x, Pos.y] -= se.GetV("тратить кислород на размножение", this);
                                                 cmap[cx, cy] = new cell(cx, cy, this);
                                                 bcells.Add(cmap[cx, cy]);
                                                 return true;

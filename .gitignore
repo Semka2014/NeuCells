@@ -365,3 +365,5 @@ FodyWeavers.xsd
 SDL2-CS.dll
 _other/
 .git/
+*.txt
+*.mp4
