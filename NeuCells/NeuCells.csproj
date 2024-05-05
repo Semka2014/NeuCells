@@ -5,7 +5,7 @@
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <ProjectGuid>{CA523C67-13A5-4288-BC84-56AEE08A77D9}</ProjectGuid>
-    <OutputType>Exe</OutputType>
+    <OutputType>WinExe</OutputType>
     <RootNamespace>NeuCells</RootNamespace>
     <AssemblyName>NeuCells</AssemblyName>
     <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>

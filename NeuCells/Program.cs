@@ -437,6 +437,7 @@ namespace NeuCells
             public static Dictionary<string, float> num = new Dictionary<string, float>();
             public static Dictionary<string, float> plus = new Dictionary<string, float>();
             public static Dictionary<string, byte> ox = new Dictionary<string, byte>();
+            public static Dictionary<string, int[]> intl = new Dictionary<string, int[]>();
             public static void Load()
             {
                 string[] f = File.ReadAllLines(Path);
@@ -448,7 +449,10 @@ namespace NeuCells
                         string exp = s.Split(':')[1];
                         float n = float.Parse(exp.Split('+')[0]);
 
-                        bool co = !s.Contains("(") && !s.Contains("z") && !s.Contains("x");
+                        bool co = !s.Contains("(") && !s.Contains("z") && !s.Contains("x") && !exp.Contains(" ");
+
+                        if (exp.Contains(" "))
+                            intl.Add(name, Array.ConvertAll(exp.Split(' '), x => int.Parse(x)));
 
                         cons.Add(name, co);
                         num.Add(name, n);
@@ -495,13 +499,20 @@ namespace NeuCells
                 return V;
             }
 
+            public static int[] GetInts(string name)
+            {
+                return intl[name];
+            }
+
+            
+
         }//всё для настроек
 
         public class UNN
         {
-            private float[][] layers = new float[6 /* количество слоёв*/][];
-            private int[] neurons = new int[6] { 18, 36, 36, 36, 36, 26 }; // количество нейронов на каждом слое
-            public float[][,] weights = new float[6 - 1][,];
+            private float[][] layers = new float[se.GetInts("слои").Length /* количество слоёв*/][];
+            private int[] neurons = se.GetInts("слои"); // количество нейронов на каждом слое
+            public float[][,] weights = new float[se.GetInts("слои").Length - 1][,];
             public int genUNN;
             private int mut;
 
@@ -616,7 +627,24 @@ namespace NeuCells
 
             static float activate(float x)
             {
-                return (float)Math.Tanh(x);
+                switch (se.GetConst("функция активации"))
+                {
+                    case 1:
+                        return (float)Math.Tanh(x);
+                    case 2:
+                        if (x < -1)
+                            return -1;
+                        else if (x > 1)
+                            return 1;
+                        else
+                            return x;
+                    case 3:
+                        return (float)Math.Sin(x);
+                    default:
+                        return x;
+
+                }
+                
             }
             //функции активации
         }
