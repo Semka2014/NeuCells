@@ -23,6 +23,7 @@ namespace NeuCells
         public static float[,] oxmap;
         public static float[,] boxmap;
         public static bool[,] map;
+        static byte[,,] frame;
 
         public static List<cell> cells, bcells;
 
@@ -36,8 +37,9 @@ namespace NeuCells
         static int step, vismode;
         static bool running, visox;
         static int seed;
+        static FileStream sstream;
 
-        static StringBuilder fr;
+        static List<byte> fr = new List<byte>();
 
         public struct pos
         {
@@ -141,8 +143,11 @@ namespace NeuCells
                 seed = rnd.Next(0, int.MaxValue);
 
             rnd = new Random(seed);
-            File.WriteAllText("save.txt", "");
-            fr = new StringBuilder();
+            if (sstream != null)
+                sstream.Close();
+            File.WriteAllText(".save", "");
+            sstream = File.Open(".save", FileMode.Append);
+            fr.Clear();
 
             step = 0;
 
@@ -184,6 +189,8 @@ namespace NeuCells
             cmap = new cell[width, height];
             fmap = new food[width, height];
             oxmap = new float[width, height];
+            map = new bool[width, height];
+            frame = new byte[width, height, 3];
 
             RandomFill();
 
@@ -221,7 +228,7 @@ namespace NeuCells
                             }
                             if (x > 510 && x < 680 && y > 160 && y < 210)
                             {
-                                string s = Microsoft.VisualBasic.Interaction.InputBox("Введите сид симуляции.\nВнимание! Это сбросит текущую симуляцию.", "Смена сида симуляции", "-1");
+                                string s = Microsoft.VisualBasic.Interaction.InputBox("Введите сид симуляции.\nВнимание! Это сбросит текущую симуляцию.", "Смена сида симуляции", seed.ToString());
                                 if (int.TryParse(s, out int n))
                                 {
                                     seed = n;
@@ -234,10 +241,6 @@ namespace NeuCells
 
                 SDL.SDL_SetRenderDrawColor(renderer, 1, 1, 1, 255);
                 SDL.SDL_RenderClear(renderer);
-
-                byte[,,] frame = new byte[width, height, 3];
-
-                map = new bool[width, height];
 
                 if (visox)
                 {
@@ -261,7 +264,9 @@ namespace NeuCells
                         }
                     }
                 }
-
+                
+                Array.Clear(map, 0, map.Length);
+                
                 bcells = new List<cell>();
                 for (int i = 0; i < cells.Count; i++)
                 {
@@ -416,14 +421,14 @@ namespace NeuCells
                     {
                         for (int y = 0; y < height; y++)
                         {
-                            fr.Append($"{frame[x, y, 0]}/{frame[x, y, 1]}/{frame[x, y, 2]}-");
+                            fr.Add(frame[x, y, 0]);
+                            fr.Add(frame[x, y, 1]);
+                            fr.Add(frame[x, y, 2]);
                         }
                     }
-                    fr.AppendLine();
-
                     if (step % 30 == 0)
                     {
-                        File.AppendAllText("save.txt", fr.ToString());
+                        sstream.Write(fr.ToArray(), 0, fr.Count);
                         fr.Clear();
                     }
                 }//съёмка
@@ -551,12 +556,13 @@ namespace NeuCells
                 }
             }
 
-            public int[] th(float[] en, float[] fd, float nrj, int tm)
+            public int[] th(float[] en, float[] fd, float nrj, float oxygen)
             {
                 Array.Copy(en, layers[0], 8);
                 Array.Copy(fd, 0, layers[0], 8, 8);
                 layers[0][16] = activate(nrj);
-                layers[0][17] = rnd.Next(1000) / 1000;
+                layers[0][17] = oxygen;
+                layers[0][18] = rnd.Next(1000) / 1000;
 
                 iter();
                 var res = layers[layers.Length - 1].ToList();
@@ -799,7 +805,7 @@ namespace NeuCells
                     }
                 }
 
-                int[] cmds = brain.th(s, f, nrj, time);
+                int[] cmds = brain.th(s, f, nrj, oxmap[Pos.x, Pos.y]);
 
                 for (int i = 0; i < 2; i++)
                 {
@@ -889,7 +895,7 @@ namespace NeuCells
                                         break; //кусать
                                     case 10:
                                         {
-                                            if (s[cmds[i] - fix] == 0.1F && oxmap[Pos.x, Pos.y] > se.GetV("тратить кислород при ходьбе", this))
+                                            if (s[cmds[i] - fix] == 0.1F && ((f[cmds[i] - fix] != 1 && oxmap[Pos.x, Pos.y] > se.GetV("тратить кислород при ходьбе", this)) || (f[cmds[i] - fix] == 1 && oxmap[Pos.x, Pos.y] > se.GetV("тратить кислород при ходьбе", this) + se.GetV("тратить кислород при поедании", this))) )
                                             {
                                                 Pos.x = (Pos.x + xx + width) % width;
                                                 Pos.y = (Pos.y + yy + height) % height;
