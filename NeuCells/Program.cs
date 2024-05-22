@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using SDL2;
 using static NeuCells.Program;
 using static SDL2.SDL;
+using System.Net;
 
 namespace NeuCells
 {
@@ -35,7 +36,7 @@ namespace NeuCells
         public static float oxygen;
         static IntPtr window, renderer;
         static int step, vismode;
-        static bool running, visox;
+        static bool running, visox, record;
         static int seed;
         static FileStream sstream;
 
@@ -61,6 +62,19 @@ namespace NeuCells
             {
                 return a.x != b.x || a.y != b.y;
             }
+        }
+
+        public struct set
+        {
+            public float[] input;
+            public float[] answer;
+
+            public set(float[] i, float[] a)
+            {
+                input = i;
+                answer = a;
+            }
+
         }
 
 
@@ -143,11 +157,15 @@ namespace NeuCells
                 seed = rnd.Next(0, int.MaxValue);
 
             rnd = new Random(seed);
-            if (sstream != null)
-                sstream.Close();
-            File.WriteAllText(".save", "");
-            sstream = File.Open(".save", FileMode.Append);
-            fr.Clear();
+
+            if (record)
+            {
+                if (sstream != null)
+                    sstream.Close();
+                File.WriteAllText(".save", "");
+                sstream = File.Open(".save", FileMode.Append);
+                fr.Clear();
+            }
 
             step = 0;
 
@@ -192,6 +210,7 @@ namespace NeuCells
             map = new bool[width, height];
             frame = new byte[width, height, 3];
 
+            record = true;
             RandomFill();
 
             sizeX = 500 / width;
@@ -258,9 +277,12 @@ namespace NeuCells
                             rect.w = sizeX;
 
                             SDL.SDL_RenderFillRect(renderer, ref rect);
-                            frame[x, y, 0] = 0;
-                            frame[x, y, 1] = 0;
-                            frame[x, y, 2] = b;
+                            if (record)
+                            {
+                                frame[x, y, 0] = 0;
+                                frame[x, y, 1] = 0;
+                                frame[x, y, 2] = b;
+                            }
                         }
                     }
                 }
@@ -289,7 +311,7 @@ namespace NeuCells
                                 b = (byte)(255 * 5 / (cells[i].nrj + 1));
                                 break;
                             case 2:
-                                Random rc = new Random(cells[i].brain.genUNN);
+                                Random rc = new Random(cells[i].dna.genUNN);
                                 r = (byte)(rc.Next(5, 25) * 10);
                                 g = (byte)(rc.Next(5, 25) * 10);
                                 b = (byte)(rc.Next(5, 25) * 10);
@@ -310,9 +332,13 @@ namespace NeuCells
                         rect.w = sizeX - 1;
 
                         SDL_SetRenderDrawColor(renderer, r, g, b, 255);
-                        frame[cells[i].Pos.x, cells[i].Pos.y, 0] = r;
-                        frame[cells[i].Pos.x, cells[i].Pos.y, 1] = g;
-                        frame[cells[i].Pos.x, cells[i].Pos.y, 2] = b;
+
+                        if (record)
+                        {
+                            frame[cells[i].Pos.x, cells[i].Pos.y, 0] = r;
+                            frame[cells[i].Pos.x, cells[i].Pos.y, 1] = g;
+                            frame[cells[i].Pos.x, cells[i].Pos.y, 2] = b;
+                        }
 
                         SDL.SDL_RenderFillRect(renderer, ref rect);
                     }
@@ -331,9 +357,12 @@ namespace NeuCells
                         rect.h = sizeY - 1;
                         rect.w = sizeX - 1;
 
-                        frame[fd.Pos.x, fd.Pos.y, 0] = 119;
-                        frame[fd.Pos.x, fd.Pos.y, 1] = 135;
-                        frame[fd.Pos.x, fd.Pos.y, 2] = 153;
+                        if (record)
+                        {
+                            frame[fd.Pos.x, fd.Pos.y, 0] = 119;
+                            frame[fd.Pos.x, fd.Pos.y, 1] = 135;
+                            frame[fd.Pos.x, fd.Pos.y, 2] = 153;
+                        }
 
                         SDL.SDL_RenderFillRect(renderer, ref rect);
                     }
@@ -416,6 +445,7 @@ namespace NeuCells
                 }//отрисовка интерфейса
 
                 SDL.SDL_RenderPresent(renderer);
+                if (record)
                 {
                     for (int x = 0; x < width; x++)
                     {
@@ -443,6 +473,8 @@ namespace NeuCells
             public static Dictionary<string, float> plus = new Dictionary<string, float>();
             public static Dictionary<string, byte> ox = new Dictionary<string, byte>();
             public static Dictionary<string, int[]> intl = new Dictionary<string, int[]>();
+
+            public static int NeuLen, FirstN, AnsN;
             public static void Load()
             {
                 string[] f = File.ReadAllLines(Path);
@@ -480,6 +512,10 @@ namespace NeuCells
                         }
                     }
                 }
+
+                NeuLen = se.GetInts("слои").Length;
+                FirstN = se.GetInts("слои")[0];
+                AnsN = se.GetInts("слои")[NeuLen - 1];
             }
 
             public static float GetConst(string name)
@@ -516,10 +552,9 @@ namespace NeuCells
         public class UNN
         {
             private float[][] layers = new float[se.GetInts("слои").Length /* количество слоёв*/][];
+            private float[][] errors = new float[se.GetInts("слои").Length /* количество слоёв*/][];
             private int[] neurons = se.GetInts("слои"); // количество нейронов на каждом слое
             public float[][,] weights = new float[se.GetInts("слои").Length - 1][,];
-            public int genUNN;
-            private int mut;
 
             private void ArrayInit()
             {
@@ -528,32 +563,22 @@ namespace NeuCells
                     layers[i] = new float[neurons[i]];
                 }
 
+                for (int i = 0; i < neurons.Length; i++) // выставляем количество нейронов на каждом слое ошибок
+                {
+                    errors[i] = new float[neurons[i]];
+                }
+
                 for (int i = 0; i < weights.Length; i++) // выставляем количество связей
                 {
                     weights[i] = new float[neurons[i], neurons[i + 1]];
                 }
             }
 
-            public UNN()
+            public UNN(DNA dna)
             {
                 ArrayInit();
                 rndw();
-                genUNN = rnd.Next(int.MinValue, int.MaxValue);
-                mut = 0;
-            }
-
-            public UNN(cell parent)
-            {
-                ArrayInit();
-                genUNN = parent.brain.genUNN;
-                mut = parent.brain.mut;
-                mutation(parent.brain);
-
-                if (mut > 128)
-                {
-                    genUNN = rnd.Next(int.MinValue, int.MaxValue);
-                    mut = 0;
-                }
+                train(dna);
             }
 
             public int[] th(float[] en, float[] fd, float nrj, float oxygen)
@@ -609,7 +634,7 @@ namespace NeuCells
 
             }
 
-            private void mutation(UNN nn)
+            /*private void mutation(UNN nn)
             {
                 bool mt = rnd.Next(100) < se.GetConst("вероятность мутации%");
 
@@ -622,10 +647,52 @@ namespace NeuCells
                             if (rnd.Next(100) < se.GetConst("серьёзность мутации%") && mt)
                             {
                                 weights[i - 1][k, j] = (rnd.Next(1000) - 500) / 1000.0F;
-                                mut++;
                             }
                             else
                                 weights[i - 1][k, j] = nn.weights[i - 1][k, j];
+                        }
+                    }
+                }
+            }*/
+
+            private void train(DNA dna)
+            {
+                foreach(set s in dna.sets)
+                {
+                    Array.Copy(s.input, layers[0], s.input.Length);
+                    iter();
+                    correct(s.answer, dna.f);
+                }
+            }
+
+            private void correct(float[] ans, float f)
+            {
+                for (int i = 0; i < ans.Length; i++)
+                {
+                    errors[neurons.Length - 1][i] = ans[i] - layers[neurons.Length - 1][i];
+                }
+
+                for (int i = neurons.Length - 1; i > 0; i--)
+                {
+                    for (int j = 0; j < neurons[i - 1]; j++)
+                    {
+                        errors[i - 1][j] = 0;
+                        for (int k = 0; k < neurons[i]; k++)
+                        {
+                            errors[i - 1][j] += errors[i][k] * weights[i - 1][j, k];
+                        }
+                    }
+                }
+
+                for (int i = 1; i < neurons.Length; i++)
+                {
+                    for (int j = 0; j < neurons[i]; j++)
+                    {
+                        for (int k = 0; k < neurons[i - 1]; k++)
+                        {
+                            float x = layers[i - 1][k];
+                            float pr = 1F;
+                            weights[i - 1][k, j] += f * errors[i][j] * layers[i - 1][k] * pr;
                         }
                     }
                 }
@@ -655,6 +722,123 @@ namespace NeuCells
             //функции активации
         }
 
+        public class DNA
+        {
+            public int genUNN;
+            int mut;
+            public int size;
+            public float f = 1;
+            public set[] sets;
+
+            public DNA(cell p1, cell p2)
+            {
+                mut = p1.dna.mut + p2.dna.mut;
+                genUNN = p1.dna.genUNN;
+
+                f = p1.dna.f + p2.dna.f;
+                size = Math.Min(p1.dna.size, p2.dna.size);
+                sets = new set[size];
+
+                for (int i = 0; i < size; i++)
+                {
+                    if (rnd.Next(0, 100) < se.GetConst("гены отца%"))
+                        sets[i] = p1.dna.sets[i];
+                    else
+                        sets[i] = p2.dna.sets[i];
+                }
+
+                sets = mutation(this);
+
+                if (mut > 10)
+                {
+                    genUNN = rnd.Next(int.MinValue, int.MaxValue);
+                    mut = 0;
+                }
+            }
+
+            set[] mutation(DNA pdna)
+            {
+                size = pdna.size;
+                set[] Msets = new set[size];
+                bool mt = rnd.Next(100) < se.GetConst("вероятность мутации%");
+
+                float[] inp = new float[se.FirstN];
+                float[] ans = new float[se.AnsN];
+
+                for (int i = 0; i < size; i++)
+                {
+                    for (int j = 0; j < se.FirstN; j++)
+                    {
+                        if (rnd.Next(100) < se.GetConst("серьёзность мутации%") && mt)
+                        {
+                            inp[j] = rnd.Next(1000) / 1000.0F;
+                            mut++;
+                        }
+                        else
+                            inp[j] = pdna.sets[i].input[j];
+                    }
+
+                    for (int j = 0; j < se.AnsN; j++)
+                    {
+                        if (rnd.Next(100) < se.GetConst("серьёзность мутации%") && mt)
+                        {
+                            ans[j] = rnd.Next(1000) / 1000.0F;
+                            mut++;
+                        }
+                        else
+                            ans[j] = pdna.sets[i].answer[j];
+                    }
+
+                    Msets[i] = new set(inp, ans);
+                }
+
+                return Msets;
+            }
+
+            public DNA()
+            {
+                mut = 0;
+                genUNN = rnd.Next(int.MinValue, int.MaxValue);
+                size = rnd.Next(5, 30);
+                f = 1 / size;
+                sets = new set[size];
+
+                float[] inp = new float[se.FirstN];
+                float[] ans = new float[se.AnsN];
+
+                for (int i = 0; i < size; i++)
+                {
+                    for (int j = 0; j < se.FirstN; j++)
+                    {
+                        inp[j] = rnd.Next(1000) / 1000.0F;
+                    }
+
+                    for (int j = 0; j < se.AnsN; j++)
+                    {
+                        ans[j] = rnd.Next(1000) / 1000.0F;
+                    }
+
+                    sets[i] = new set(inp, ans);
+                }
+            }
+
+            public DNA(cell p)
+            {
+                mut = p.dna.mut;
+                genUNN = p.dna.genUNN;
+
+                f = p.dna.f;
+                size = p.dna.size;
+                sets = mutation(p.dna);
+
+                if (mut > 10)
+                {
+                    genUNN = rnd.Next(int.MinValue, int.MaxValue);
+                    mut = 0;
+                }
+            }
+        }
+
         public class food
         {
             public pos Pos;
@@ -675,6 +859,7 @@ namespace NeuCells
         public class cell
         {
             public pos Pos;
+            public DNA dna;
             public UNN brain;
             public float nrj;
             public float ph;
@@ -688,18 +873,20 @@ namespace NeuCells
                 nrj = 6;
                 time = 0;
 
-                brain = new UNN();
+                dna = new DNA();
+                brain = new UNN(dna);
             }
 
             public cell(int x, int y, cell parent)
             {
                 Pos.y = y;
                 Pos.x = x;
-                nrj = se.GetV("сыну давать энергии", this);
+                nrj = Math.Min(parent.nrj, se.GetV("сыну давать энергии", this));
                 ph = parent.ph;
                 time = 0;
 
-                brain = new UNN(parent);
+                dna = new DNA(parent);
+                brain = new UNN(dna);
             }
 
             public bool step()
@@ -728,7 +915,7 @@ namespace NeuCells
                         float sens = 0.1F;
                         if (cmap[cx, cy] != null)
                         {
-                            if (cmap[cx, cy].brain.genUNN == brain.genUNN)
+                            if (cmap[cx, cy].dna.genUNN == dna.genUNN)
                                 sens = 0.5F;
                             else
                                 sens = 1F;
@@ -925,8 +1112,10 @@ namespace NeuCells
                                                 int cx = (Pos.x + xx + width) % width;
                                                 int cy = (Pos.y + yy + height) % height;
 
+                                                //нужно тут пофиксить а то энергия из ниоткуда для сына берётся
                                                 nrj -= se.GetV("тратить энергии на размножение", this);
                                                 oxmap[Pos.x, Pos.y] -= se.GetV("тратить кислород на размножение", this);
+
                                                 cmap[cx, cy] = new cell(cx, cy, this);
                                                 bcells.Add(cmap[cx, cy]);
                                                 return true;
