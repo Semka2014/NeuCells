@@ -77,7 +77,6 @@ namespace NeuCells
                 }
             }
 
-            SDL.SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
             string text = display.ToString();
             for (int i = 0; i < text.Length; i++)
             {
@@ -180,7 +179,7 @@ namespace NeuCells
         {
             se.Load();
             SDL.SDL_Init(SDL.SDL_INIT_VIDEO);
-            window = SDL.SDL_CreateWindow("Нейронные клетки", 100, 100, 700, 501, SDL.SDL_WindowFlags.SDL_WINDOW_RESIZABLE);
+            window = SDL.SDL_CreateWindow("Нейронные клетки", 100, 100, 690, 501, SDL.SDL_WindowFlags.SDL_WINDOW_OPENGL);
             renderer = SDL.SDL_CreateRenderer(window, 0, SDL.SDL_RendererFlags.SDL_RENDERER_SOFTWARE);
 
             seed = (int)se.GetConst("стандартный сид");
@@ -191,13 +190,13 @@ namespace NeuCells
             oxmap = new float[width, height];
             map = new bool[width, height];
             frame = new byte[width, height, 3];
-
+            
             RandomFill();
 
             sizeX = 500 / width;
             sizeY = 500 / height;
 
-            vismode = 0;
+            vismode = 2;
             visox = true;
             running = true;
 
@@ -296,8 +295,8 @@ namespace NeuCells
                                 break;
                             case 3:
                                 r = 255;
-                                g = 255;
-                                b = (byte)(float)((float)255 * (float)cells[i].time / (float)1000);
+                                g = (byte)(255 - (float)(255 * cells[i].time / 1000));
+                                b = (byte)(float)(255 * cells[i].time / 1000);
                                 break;
                         }
 
@@ -371,6 +370,16 @@ namespace NeuCells
 
                 {
                     {
+                        rect2.x = 501;
+                        rect2.y = 1;
+                        rect2.w = 188;
+                        rect2.h = 499;
+                    }
+
+                    SDL.SDL_SetRenderDrawColor(renderer, 220, 220, 220, 255);
+                    SDL.SDL_RenderFillRect(renderer, ref rect2);
+
+                    {
                         rect2.x = 510;
                         rect2.y = 10;
                         rect2.w = 170;
@@ -395,7 +404,22 @@ namespace NeuCells
                         rect2.h = 40;
                     }
 
-                    SDL.SDL_SetRenderDrawColor(renderer, (byte)(255 * (vismode + 1) / 3), (byte)(255 * (vismode + 1) / 2), (byte)(255 * (vismode + 1) / 1), 255);
+                    switch (vismode)
+                    {
+                        case 0:
+                            SDL.SDL_SetRenderDrawColor(renderer, 0, 180, 50, 255);
+                            break;
+                        case 1:
+                            SDL.SDL_SetRenderDrawColor(renderer, 200, 170, 0, 255);
+                            break;
+                        case 2:
+                            SDL.SDL_SetRenderDrawColor(renderer, 150, 0, 150, 255);
+                            break;
+                        case 3:
+                            SDL.SDL_SetRenderDrawColor(renderer, 220, 0, 150, 255);
+                            break;
+
+                    }
                     SDL.SDL_RenderFillRect(renderer, ref rect2);
 
                     {
@@ -408,10 +432,14 @@ namespace NeuCells
                     SDL.SDL_SetRenderDrawColor(renderer, 255, 10, 10, 255);
                     SDL.SDL_RenderFillRect(renderer, ref rect2);
 
+                    SDL.SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+
                     DisplayText(new pos(515, 160), 5, 3, seed);
                     DisplayText(new pos(515, 210), 5, 3, step);
                     DisplayText(new pos(610, 210), 5, 3, cells.Count);
                     step++;
+
+                    SDL.SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
                     DisplayText(new pos(515, 20), 5, 3, (int)(oxygen / (width * height) * 100));
                 }//отрисовка интерфейса
 
@@ -695,7 +723,8 @@ namespace NeuCells
             {
                 Pos.y = y;
                 Pos.x = x;
-                nrj = se.GetV("сыну давать энергии", this);
+                nrj = Math.Min(se.GetV("сыну давать энергии", this), parent.nrj);
+                parent.nrj -= nrj;
                 ph = parent.ph;
                 time = 0;
 
@@ -707,13 +736,18 @@ namespace NeuCells
                 time++;
 
                 nrj -= 0.5F;
-                oxmap[Pos.x, Pos.y] -= 0;
+                oxmap[Pos.x, Pos.y] -= se.GetV("пассивное потребление кислорода", this);
 
-                if (nrj <= 0)
+                if (nrj <= 0 || time > 1000)
                 {
-                    fmap[Pos.x, Pos.y] = new food(Pos, se.GetV("энергия в трупе", this));
                     cmap[Pos.x, Pos.y] = null;
-                    oxmap[Pos.x, Pos.y] -= se.GetV("потеря кислорода при смерти", this);
+                    float e = 0;
+                    if (oxmap[Pos.x, Pos.y] > se.GetV("потеря кислорода при смерти", this)) 
+                    {
+                        oxmap[Pos.x, Pos.y] -= se.GetV("потеря кислорода при смерти", this);
+                        e = se.GetV("энергия в трупе", this);
+                    }
+                    fmap[Pos.x, Pos.y] = new food(Pos, e);
                     return false;
                 } //смерть
 
@@ -895,32 +929,39 @@ namespace NeuCells
                                         break; //кусать
                                     case 10:
                                         {
-                                            if (s[cmds[i] - fix] == 0.1F && ((f[cmds[i] - fix] != 1 && oxmap[Pos.x, Pos.y] > se.GetV("тратить кислород при ходьбе", this)) || (f[cmds[i] - fix] == 1 && oxmap[Pos.x, Pos.y] > se.GetV("тратить кислород при ходьбе", this) + se.GetV("тратить кислород при поедании", this))) )
+                                            if (s[cmds[i] - fix] == 0.1F
+                                                && ((f[cmds[i] - fix] != 1
+                                                && oxmap[Pos.x, Pos.y] > se.GetV("тратить кислород при ходьбе", this))
+                                                || (f[cmds[i] - fix] == 1
+                                                && oxmap[Pos.x, Pos.y] > se.GetV("тратить кислород при ходьбе", this)
+                                                + se.GetV("тратить кислород при поедании", this))) )
                                             {
-                                                Pos.x = (Pos.x + xx + width) % width;
-                                                Pos.y = (Pos.y + yy + height) % height;
+                                                int Nx = (Pos.x + xx + width) % width;
+                                                int Ny = (Pos.y + yy + height) % height;
 
                                                 if (f[cmds[i] - fix] == 1)
                                                 {
-                                                    nrj += fmap[Pos.x, Pos.y].nrj * se.GetV("получать энергии от еды", this);
+                                                    nrj += fmap[Nx, Ny].nrj * se.GetV("получать энергии от еды", this);
                                                     oxmap[Pos.x, Pos.y] -= se.GetV("тратить кислород при поедании", this);
-                                                    fmap[Pos.x, Pos.y] = null;
+                                                    fmap[Nx, Ny] = null;
 
                                                     if (ph < 0.99F)
                                                         ph += 0.01F;
                                                 }
 
                                                 oxmap[Pos.x, Pos.y] -= se.GetV("тратить кислород при ходьбе", this);
-                                                cmap[Pos.x, Pos.y] = this;
-                                                cmap[(Pos.x - xx + width) % width, (Pos.y - yy + height) % height] = null;
+                                                cmap[Nx, Ny] = this;
+                                                cmap[Pos.x, Pos.y] = null;
 
+                                                Pos.x = Nx;
+                                                Pos.y = Ny;
                                                 return true;
                                             }
                                         }
                                         break; //ходить
                                     case 18:
                                         {
-                                            if (s[cmds[i] - fix] == 0.1F && f[cmds[i] - fix] == 0.1F && oxmap[Pos.x, Pos.y] > se.GetV("тратить кислород на размножение", this))
+                                            if (s[cmds[i] - fix] == 0.1F && f[cmds[i] - fix] == 0.1F && oxmap[Pos.x, Pos.y] > se.GetV("тратить кислород на размножение", this) && nrj > se.GetV("тратить энергии на размножение", this) + 1)
                                             {
                                                 int cx = (Pos.x + xx + width) % width;
                                                 int cy = (Pos.y + yy + height) % height;
