@@ -63,7 +63,6 @@ namespace NeuCells
             }
         }
 
-
         static void DisplayText(pos cpos, int size, int interval, int display)
         {
             void Interp(string cmds, int pos)
@@ -144,7 +143,31 @@ namespace NeuCells
             rnd = new Random(seed);
             if (sstream != null)
                 sstream.Close();
-            File.WriteAllText(".save", "");
+
+            byte[] hwnd = new byte[4];
+            { 
+                if (width <= 255)
+                {
+                    hwnd[0] = (byte)width;
+                    hwnd[1] = 0;
+                }
+                else
+                {
+                    hwnd[0] = 255;
+                    hwnd[1] = (byte)(width - 255);
+                }
+                if (height <= 255)
+                {
+                    hwnd[2] = (byte)height;
+                    hwnd[3] = 0;
+                }
+                else
+                {
+                    hwnd[2] = 255;
+                    hwnd[3] = (byte)(height - 255);
+                }
+            }
+            File.WriteAllBytes(".save", hwnd);
             sstream = File.Open(".save", FileMode.Append);
             fr.Clear();
 
@@ -738,7 +761,7 @@ namespace NeuCells
                 nrj -= 0.5F;
                 oxmap[Pos.x, Pos.y] -= se.GetV("пассивное потребление кислорода", this);
 
-                if (nrj <= 0 || time > 1000)
+                if (nrj <= 0 || time > 100)
                 {
                     cmap[Pos.x, Pos.y] = null;
                     float e = 0;
@@ -763,7 +786,7 @@ namespace NeuCells
                         if (cmap[cx, cy] != null)
                         {
                             if (cmap[cx, cy].brain.genUNN == brain.genUNN)
-                                sens = 0.5F;
+                                sens = 0.3F;
                             else
                                 sens = 1F;
                         }
