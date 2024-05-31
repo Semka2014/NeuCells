@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using SDL2;
 using static NeuCells.Program;
 using static SDL2.SDL;
+using System.Drawing.Imaging;
 
 namespace NeuCells
 {
@@ -35,11 +36,8 @@ namespace NeuCells
         public static float oxygen;
         static IntPtr window, renderer;
         static int step, vismode;
-        static bool running, visox;
+        static bool running, visox, recording;
         static int seed;
-        static FileStream sstream;
-
-        static List<byte> fr = new List<byte>();
 
         public struct pos
         {
@@ -63,7 +61,7 @@ namespace NeuCells
             }
         }
 
-        static void DisplayText(pos cpos, int size, int interval, int display)
+        static void DisplayText(pos cpos, int size, int interval, string display)
         {
             void Interp(string cmds, int pos)
             {
@@ -76,63 +74,124 @@ namespace NeuCells
                 }
             }
 
-            string text = display.ToString();
+            string text = display;
             for (int i = 0; i < text.Length; i++)
             {
                 switch (text[i])
                 {
                     case '0':
-                        {
-                            Interp("0004242000", i);
-                        }
+                        Interp("0004242000", i);
                         break;
                     case '1':
-                        {
-                            Interp("141001", i);
-                        }
+                        Interp("141001", i);
                         break;
                     case '2':
-                        {
-                            Interp("011021220424", i);
-                        }
+                        Interp("011021220424", i);
                         break;
                     case '3':
-                        {
-                            Interp("001021120212231404", i);
-                        }
+                        Interp("001021120212231404", i);
                         break;
                     case '4':
-                        {
-                            Interp("0002222420", i);
-                        }
+                        Interp("0002222420", i);
                         break;
                     case '5':
-                        {
-                            Interp("20000112222404", i);
-                        }
+                        Interp("20000112222404", i);
                         break;
                     case '6':
-                        {
-                            Interp("200004242202", i);
-                        }
+                        Interp("200004242202", i);
                         break;
                     case '7':
-                        {
-                            Interp("0020211214", i);
-                        }
+                        Interp("0020211214", i);
                         break;
                     case '8':
-                        {
-                            Interp("002021030424230100", i);
-                        }
+                        Interp("002021030424230100", i);
                         break;
                     case '9':
-                        {
-                            Interp("042420000222", i);
-                        }
+                        Interp("042420000222", i);
+                        break;
+                    case 'a':
+                        Interp("04011021242202", i);
+                        break;
+                    case 'b':
+                        Interp("00102112021223140400", i);
+                        break;
+                    case 'c':
+                        Interp("20000424", i);
+                        break;
+                    case 'd':
+                        Interp("00041423211000", i);
+                        break;
+                    case 'e':
+                        Interp("20000222020424", i);
+                        break;
+                    case 'f':
+                        Interp("040222020020", i);
+                        break;
+                    case 'g':
+                        Interp("200004242212", i);
+                        break;
+                    case 'h':
+                        Interp("000402222024", i);
+                        break;
+                    case 'i':
+                        Interp("002010140424", i);
+                        break;
+                    case 'j':
+                        Interp("002010140403", i);
+                        break;
+                    case 'k':
+                        Interp("00040212201224", i);
+                        break;
+                    case 'l':
+                        Interp("000424", i);
+                        break;
+                    case 'm':
+                        Interp("0400122024", i);
+                        break;
+                    case 'n':
+                        Interp("04002420", i);
+                        break;
+                    case 'o':
+                        Interp("0004242000", i);
+                        break;
+                    case 'p':
+                        Interp("040010211202", i);
+                        break;
+                    case 'q':
+                        Interp("242010011222", i);
+                        break;
+                    case 'r':
+                        Interp("040010211202122324", i);
+                        break;
+                    case 's':
+                        Interp("211001231403", i);
+                        break;
+                    case 't':
+                        Interp("14100020", i);
+                        break;
+                    case 'u':
+                        Interp("00042420", i);
+                        break;
+                    case 'v':
+                        Interp("001420", i);
+                        break;
+                    case 'w':
+                        Interp("0004122420", i);
+                        break;
+                    case 'x':
+                        Interp("0024122004", i);
+                        break;
+                    case 'y':
+                        Interp("04201200", i);
+                        break;
+                    case 'z':
+                        Interp("00200424", i);
+                        break;
+                    default:
                         break;
                 }
             }
+            return;
         }
 
         static void RandomFill()
@@ -141,35 +200,12 @@ namespace NeuCells
                 seed = rnd.Next(0, int.MaxValue);
 
             rnd = new Random(seed);
-            if (sstream != null)
-                sstream.Close();
 
-            byte[] hwnd = new byte[4];
-            { 
-                if (width <= 255)
-                {
-                    hwnd[0] = (byte)width;
-                    hwnd[1] = 0;
-                }
-                else
-                {
-                    hwnd[0] = 255;
-                    hwnd[1] = (byte)(width - 255);
-                }
-                if (height <= 255)
-                {
-                    hwnd[2] = (byte)height;
-                    hwnd[3] = 0;
-                }
-                else
-                {
-                    hwnd[2] = 255;
-                    hwnd[3] = (byte)(height - 255);
-                }
+            string[] files = Directory.GetFiles("sequence", "*.png");
+            foreach (string file in files)
+            {
+                File.Delete(file);
             }
-            File.WriteAllBytes(".save", hwnd);
-            sstream = File.Open(".save", FileMode.Append);
-            fr.Clear();
 
             step = 0;
 
@@ -219,8 +255,12 @@ namespace NeuCells
             sizeX = 500 / width;
             sizeY = 500 / height;
 
-            vismode = 2;
+            int bitmapWidth = (width * 5) % 2 == 0 ? width * 5 : (width * 5) + 1;
+            int bitmapHeight = (height * 5) % 2 == 0 ? height * 5 : (height * 5) + 1;
+
+            vismode = 0;
             visox = true;
+            recording = false;
             running = true;
 
             while (running)
@@ -243,12 +283,16 @@ namespace NeuCells
                             {
                                 visox = !visox;
                             }
-                            if (x > 510 && x < 680 && y > 110 && y < 150)
+                            if (x > 510 && x < 680 && y > 110 && y < 140)
+                            {
+                                recording = !recording;
+                            }
+                            if (x > 510 && x < 680 && y > 160 && y < 200)
                             {
                                 seed = -1;
                                 RandomFill();
                             }
-                            if (x > 510 && x < 680 && y > 160 && y < 210)
+                            if (x > 510 && x < 680 && y > 210 && y < 260)
                             {
                                 string s = Microsoft.VisualBasic.Interaction.InputBox("Введите сид симуляции.\nВнимание! Это сбросит текущую симуляцию.", "Смена сида симуляции", seed.ToString());
                                 if (int.TryParse(s, out int n))
@@ -426,19 +470,24 @@ namespace NeuCells
                         rect2.w = 170;
                         rect2.h = 40;
                     }
-
+                    
+                    string cap = "", cap2;
                     switch (vismode)
                     {
                         case 0:
+                            cap = "predation";
                             SDL.SDL_SetRenderDrawColor(renderer, 0, 180, 50, 255);
                             break;
                         case 1:
+                            cap = "energy";
                             SDL.SDL_SetRenderDrawColor(renderer, 200, 170, 0, 255);
                             break;
                         case 2:
+                            cap = "genes";
                             SDL.SDL_SetRenderDrawColor(renderer, 150, 0, 150, 255);
                             break;
                         case 3:
+                            cap = "age";
                             SDL.SDL_SetRenderDrawColor(renderer, 220, 0, 150, 255);
                             break;
 
@@ -451,37 +500,69 @@ namespace NeuCells
                         rect2.w = 170;
                         rect2.h = 40;
                     }
+                    if (recording)
+                    {
+                        cap2 = "stop";
+                        SDL.SDL_SetRenderDrawColor(renderer, 0, 0, 200, 255);
+                    }
+                    else
+                    {
+                        cap2 = "record";
+                        SDL.SDL_SetRenderDrawColor(renderer, 0, 200, 0, 255);
+                    }
+                    SDL.SDL_RenderFillRect(renderer, ref rect2);
+
+                    {
+                        rect2.x = 510;
+                        rect2.y = 160;
+                        rect2.w = 170;
+                        rect2.h = 40;
+                    }
 
                     SDL.SDL_SetRenderDrawColor(renderer, 255, 10, 10, 255);
                     SDL.SDL_RenderFillRect(renderer, ref rect2);
 
+                    SDL.SDL_SetRenderDrawColor(renderer, 220, 220, 220, 255);
+                    DisplayText(new pos(515, 118), 5, 3, cap2);
+                    DisplayText(new pos(515, 68), 5, 3, cap);
+
                     SDL.SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
 
-                    DisplayText(new pos(515, 160), 5, 3, seed);
-                    DisplayText(new pos(515, 210), 5, 3, step);
-                    DisplayText(new pos(610, 210), 5, 3, cells.Count);
+                    DisplayText(new pos(515, 210), 5, 3, seed.ToString());
+                    DisplayText(new pos(515, 260), 5, 3, step.ToString());
+                    DisplayText(new pos(610, 260), 5, 3, cells.Count.ToString());
                     step++;
 
                     SDL.SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-                    DisplayText(new pos(515, 20), 5, 3, (int)(oxygen / (width * height) * 100));
+                    DisplayText(new pos(515, 20), 5, 3, ((int)(oxygen / (width * height) * 100)).ToString());
                 }//отрисовка интерфейса
 
                 SDL.SDL_RenderPresent(renderer);
+                if (recording && step % se.GetConst("каждый кадр") == 0)
                 {
+                    Bitmap bmp = new Bitmap(bitmapWidth, bitmapHeight);
+
+                    using (Graphics g = Graphics.FromImage(bmp))
+                    {
+                        g.Clear(Color.Black);
+                    }
+
                     for (int x = 0; x < width; x++)
                     {
                         for (int y = 0; y < height; y++)
                         {
-                            fr.Add(frame[x, y, 0]);
-                            fr.Add(frame[x, y, 1]);
-                            fr.Add(frame[x, y, 2]);
+                            for (int xx = 0; xx < 4; xx++)
+                            {
+                                for (int yy = 0; yy < 4; yy++)
+                                {
+                                    bmp.SetPixel(x * 5 + xx, y * 5 + yy, Color.FromArgb(frame[x, y, 0], frame[x, y, 1], frame[x, y, 2]));
+                                }
+                            }
                         }
                     }
-                    if (step % 30 == 0)
-                    {
-                        sstream.Write(fr.ToArray(), 0, fr.Count);
-                        fr.Clear();
-                    }
+
+                    string framePath = Path.Combine("sequence", $"frame_{(int)(step / se.GetConst("каждый кадр")):D6}.png");
+                    bmp.Save(framePath, ImageFormat.Png);
                 }//съёмка
             }
         }
