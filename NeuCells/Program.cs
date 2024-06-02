@@ -240,15 +240,12 @@ namespace NeuCells
                 seed = rnd.Next(0, int.MaxValue);
 
             rnd = new Random(seed);
-            rnduse = 0;
 
             string[] files = Directory.GetFiles("sequence", "*.png");
             foreach (string file in files)
             {
                 File.Delete(file);
             }
-
-            step = 0;
 
             cells = new List<cell>();
             cmap = new cell[width, height];
