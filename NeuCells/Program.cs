@@ -1,14 +1,128 @@
-﻿using System;
+﻿using SDL2;
+using System;
 using System.Collections.Generic;
+using System.Drawing;
+using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
 using System.Text;
-using System.Drawing;
-using SDL2;
-using System.Drawing.Imaging;
 
 namespace NeuCells
 {
+    public class _Random
+    {
+        public int inext;
+        public int inextp;
+        public int[] SeedArray = new int[56];
+
+        public _Random()
+            : this(Environment.TickCount)
+        {
+        }
+        public _Random(int Seed)
+        {
+            int num = 161803398 - ((Seed == int.MinValue) ? int.MaxValue : Math.Abs(Seed));
+            SeedArray[55] = num;
+            int num2 = 1;
+            for (int i = 1; i < 55; i++)
+            {
+                int num3 = 21 * i % 55;
+                SeedArray[num3] = num2;
+                num2 = num - num2;
+                if (num2 < 0)
+                {
+                    num2 += int.MaxValue;
+                }
+
+                num = SeedArray[num3];
+            }
+            for (int j = 1; j < 5; j++)
+            {
+                for (int k = 1; k < 56; k++)
+                {
+                    SeedArray[k] -= SeedArray[1 + (k + 30) % 55];
+                    if (SeedArray[k] < 0)
+                    {
+                        SeedArray[k] += int.MaxValue;
+                    }
+                }
+            }
+            inext = 0;
+            inextp = 21;
+        }
+
+        protected double Sample()
+        {
+            return InternalSample() * 4.6566128752457969E-10;
+        }
+
+        private int InternalSample()
+        {
+            int num = inext;
+            int num2 = inextp;
+            if (++num >= 56)
+            {
+                num = 1;
+            }
+
+            if (++num2 >= 56)
+            {
+                num2 = 1;
+            }
+
+            int num3 = SeedArray[num] - SeedArray[num2];
+            if (num3 == int.MaxValue)
+            {
+                num3--;
+            }
+
+            if (num3 < 0)
+            {
+                num3 += int.MaxValue;
+            }
+
+            SeedArray[num] = num3;
+            inext = num;
+            inextp = num2;
+            return num3;
+        }
+        public virtual int Next()
+        {
+            return InternalSample();
+        }
+
+        private double GetSampleForLargeRange()
+        {
+            int num = InternalSample();
+            if ((InternalSample() % 2 == 0) ? true : false)
+            {
+                num = -num;
+            }
+            double num2 = num;
+            num2 += 2147483646.0;
+            return num2 / 4294967293.0;
+        }
+        public int Next(int minValue, int maxValue)
+        {
+            long num = (long)maxValue - (long)minValue;
+            if (num <= int.MaxValue)
+            {
+                return (int)(Sample() * (double)num) + minValue;
+            }
+            return (int)((long)(GetSampleForLargeRange() * (double)num) + minValue);
+        }
+        public int Next(int maxValue)
+        {
+            return (int)(Sample() * (double)maxValue);
+        }
+
+        public void SkipTo(int[] SeedArray, int inext, int inextp)
+        {
+            this.SeedArray = SeedArray;
+            this.inext = inext;
+            this.inextp = inextp;
+        }
+    }
     internal class Program
     {
         static float[] s = new float[8];
@@ -25,14 +139,13 @@ namespace NeuCells
         public static cell[,] cmap;
         public static food[,] fmap;
 
-        static Random rnd = new Random();
+        static _Random rnd = new _Random();
         static SDL.SDL_Rect rect2 = new SDL.SDL_Rect();
         public static float oxygen;
         static IntPtr window, renderer;
         static int step, vismode;
         static bool running, visox, recording;
         static int seed;
-        static ulong rnduse = 0;
 
         public struct pos
         {
@@ -192,10 +305,9 @@ namespace NeuCells
         static void RandomFill()
         {
             if (seed == -1)
-                seed = NextR(0, int.MaxValue);
+                seed = rnd.Next(int.MaxValue);
 
-            rnd = new Random(seed);
-            rnduse = 0;
+            rnd = new _Random(seed);
 
             string[] files = Directory.GetFiles("sequence", "*.png");
             foreach (string file in files)
@@ -211,31 +323,26 @@ namespace NeuCells
 
             for (int x = 0; x < width; x++)
                 for (int y = 0; y < height; y++)
-                {
-                    oxmap[x, y] = NextR((int)se.GetConst("кислородом от%"), (int)se.GetConst("кислородом до%")) / 100F;
-                    rnduse++;
-                }
+                    oxmap[x, y] = rnd.Next((int)se.GetConst("кислородом от%"), (int)se.GetConst("кислородом до%")) / 100F;
 
             for (int x = 0; x < width; x++)
             {
                 for (int y = 0; y < height; y++)
                 {
-                    if (NextR(0, 100) < se.GetConst("клетка%"))
+                    if (rnd.Next(100) < se.GetConst("клетка%"))
                     {
                         cmap[x, y] = new cell(x, y);
                         cells.Add(cmap[x, y]);
-                        rnduse--;
                     }
-                    else if (NextR(0, 100) < se.GetConst("еда%"))
+                    else if (rnd.Next(100) < se.GetConst("еда%"))
                         fmap[x, y] = new food(x, y, 10);
-                    rnduse += 2;
                 }
             }
         }
 
         static void VoidFill()
         {
-            rnd = new Random(seed);
+            rnd = new _Random(seed);
 
             string[] files = Directory.GetFiles("sequence", "*.png");
             foreach (string file in files)
@@ -246,14 +353,6 @@ namespace NeuCells
             cells = new List<cell>();
             cmap = new cell[width, height];
             fmap = new food[width, height];
-        }
-
-        static int NextR(int min, int max)
-        {
-            int randomValue = rnd.Next();
-            long range = (long)max - min;
-            long scaled = (long)(randomValue / (double)int.MaxValue * range);
-            return (int)(min + scaled);
         }
 
         static void Main(string[] args)
@@ -328,11 +427,18 @@ namespace NeuCells
                                 string s = Microsoft.VisualBasic.Interaction.InputBox("Введите название и путь к сохранению. \nПо умолчанию сохранится в папке с программой.", "Сохранение симуляции", ".save");
                                 if (s == "")
                                     break;
-                                
+
+                                StringBuilder rn = new StringBuilder();
+                                rn.Append(rnd.SeedArray[0]);
+                                for (int i = 1; i < rnd.SeedArray.Length; i++)
+                                {
+                                    rn.Append($"_{rnd.SeedArray[i]}");
+                                }
+
                                 List<string> save = new List<string>
                                 {
                                     seed.ToString(),
-                                    rnduse.ToString(),
+                                    $"{rnd.inext}_{rnd.inextp}_{rn.ToString()}",
                                     step.ToString(),
                                     $"{width}_{height}"
                                 };
@@ -386,7 +492,6 @@ namespace NeuCells
 
                                 string[] save = File.ReadLines(".save").ToArray();
                                 seed = int.Parse(save[0]);
-                                rnduse = ulong.Parse(save[1]);
                                 width = int.Parse(save[3].Split('_')[0]);
                                 height = int.Parse(save[3].Split('_')[1]);
 
@@ -396,11 +501,12 @@ namespace NeuCells
                                 bitmapWidth = (width * 5) % 2 == 0 ? width * 5 : (width * 5) + 1;
                                 bitmapHeight = (height * 5) % 2 == 0 ? height * 5 : (height * 5) + 1;
 
+                                int[] sags = Array.ConvertAll(save[1].Split('_'), it => int.Parse(it));
+
                                 VoidFill();
-                                for (ulong i = 0; i < rnduse; i++)
-                                {
-                                    rnd.Next();
-                                }
+                                rnd.inext = sags[0];
+                                rnd.inextp = sags[1];
+                                rnd.SeedArray = sags.Skip(2).ToArray();
 
                                 step = int.Parse(save[2]);
 
@@ -847,8 +953,7 @@ namespace NeuCells
                 ArrayInit();
 
                 rndw();
-                genUNN = NextR(int.MinValue, int.MaxValue);
-                rnduse++;
+                genUNN = rnd.Next(int.MinValue, int.MaxValue);
 
                 mut = 0;
             }
@@ -869,8 +974,7 @@ namespace NeuCells
 
                 if (mut > 128)
                 {
-                    genUNN = NextR(int.MinValue, int.MaxValue);
-                    rnduse++;
+                    genUNN = rnd.Next(int.MinValue, int.MaxValue);
                     mut = 0;
                 }
             }
@@ -881,8 +985,7 @@ namespace NeuCells
                 Array.Copy(fd, 0, layers[0], 8, 8);
                 layers[0][16] = activate(nrj);
                 layers[0][17] = oxygen;
-                layers[0][18] = NextR(0, 1000) / 1000;
-                rnduse++;
+                layers[0][18] = rnd.Next(1000) / 1000;
 
                 iter();
                 var res = layers[layers.Length - 1].ToList();
@@ -922,8 +1025,7 @@ namespace NeuCells
                     {
                         for (int k = 0; k < neurons[i - 1]; k++)
                         {
-                            weights[i - 1][k, j] = (NextR(0, 1000) - 500) / 1000.0F;
-                            rnduse++;
+                            weights[i - 1][k, j] = (rnd.Next(1000) - 500) / 1000.0F;
                         }
                     }
                 }
@@ -932,8 +1034,7 @@ namespace NeuCells
 
             private void mutation(UNN nn)
             {
-                bool mt = NextR(0, 100) < se.GetConst("вероятность мутации%");
-                rnduse++;
+                bool mt = rnd.Next(100) < se.GetConst("вероятность мутации%");
 
                 for (int i = 1; i < neurons.Length; i++)
                 {
@@ -941,11 +1042,9 @@ namespace NeuCells
                     {
                         for (int k = 0; k < neurons[i - 1]; k++)
                         {
-                            rnduse++;
-                            if (NextR(0, 100) < se.GetConst("серьёзность мутации%") && mt)
+                            if (rnd.Next(100) < se.GetConst("серьёзность мутации%") && mt)
                             {
-                                weights[i - 1][k, j] = (NextR(0, 1000) - 500) / 1000.0F;
-                                rnduse++;
+                                weights[i - 1][k, j] = (rnd.Next(1000) - 500) / 1000.0F;
                                 mut++;
                             }
                             else
