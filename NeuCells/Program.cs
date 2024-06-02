@@ -1,16 +1,10 @@
 ﻿using System;
-using System.CodeDom;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Security.Cryptography;
 using System.Text;
 using System.Drawing;
-using System.Threading;
-using System.Threading.Tasks;
 using SDL2;
-using static NeuCells.Program;
-using static SDL2.SDL;
 using System.Drawing.Imaging;
 
 namespace NeuCells
@@ -38,6 +32,7 @@ namespace NeuCells
         static int step, vismode;
         static bool running, visox, recording;
         static int seed;
+        static long rnduse = 0;
 
         public struct pos
         {
@@ -200,6 +195,7 @@ namespace NeuCells
                 seed = rnd.Next(0, int.MaxValue);
 
             rnd = new Random(seed);
+            rnduse = 0;
 
             string[] files = Directory.GetFiles("sequence", "*.png");
             foreach (string file in files)
@@ -217,21 +213,46 @@ namespace NeuCells
                 for (int y = 0; y < height; y++)
                 {
                     oxmap[x, y] = rnd.Next((int)se.GetConst("кислородом от%"), (int)se.GetConst("кислородом до%")) / 100F;
+                    rnduse++;
                 }
 
             for (int x = 0; x < width; x++)
             {
                 for (int y = 0; y < height; y++)
                 {
+                    rnduse++;
                     if (rnd.Next(100) < se.GetConst("клетка%"))
                     {
                         cmap[x, y] = new cell(x, y);
                         cells.Add(cmap[x, y]);
+                        rnduse--;
                     }
                     else if (rnd.Next(100) < se.GetConst("еда%"))
                         fmap[x, y] = new food(x, y, 10);
+                    rnduse++;
                 }
             }
+        }
+
+        static void VoidFill()
+        {
+            if (seed == -1)
+                seed = rnd.Next(0, int.MaxValue);
+
+            rnd = new Random(seed);
+            rnduse = 0;
+
+            string[] files = Directory.GetFiles("sequence", "*.png");
+            foreach (string file in files)
+            {
+                File.Delete(file);
+            }
+
+            step = 0;
+
+            cells = new List<cell>();
+            cmap = new cell[width, height];
+            fmap = new food[width, height];
         }
 
         static void Main(string[] args)
@@ -258,7 +279,7 @@ namespace NeuCells
             int bitmapWidth = (width * 5) % 2 == 0 ? width * 5 : (width * 5) + 1;
             int bitmapHeight = (height * 5) % 2 == 0 ? height * 5 : (height * 5) + 1;
 
-            vismode = 0;
+            vismode = 2;
             visox = true;
             recording = false;
             running = true;
@@ -299,6 +320,136 @@ namespace NeuCells
                                 {
                                     seed = n;
                                     RandomFill();
+                                }
+                            }
+                            if (x > 668 && x < 688 && y > 479 && y < 499)
+                            {
+                                string s = Microsoft.VisualBasic.Interaction.InputBox("Введите название и путь к сохранению. \nПо умолчанию сохранится в папке с программой.", "Сохранение симуляции", ".save");
+                                if (s == "")
+                                    break;
+                                
+                                List<string> save = new List<string>
+                                {
+                                    seed.ToString(),
+                                    rnduse.ToString(),
+                                    step.ToString(),
+                                    $"{width}_{height}"
+                                };
+
+                                foreach(food f in fmap)
+                                {
+                                    if (f != null)
+                                        save.Add($"f_{f.Pos.x}_{f.Pos.y}_{f.nrj}");
+                                }
+                                foreach(cell c in cmap)
+                                {
+                                    if (c != null)
+                                    {
+                                        StringBuilder sc = new StringBuilder();
+                                        sc.Append($"c_{c.Pos.x}_{c.Pos.y}_{c.time}_{c.ph}_{c.nrj}_{c.brain.genUNN}_");
+                                        for (int l = 0; l < se.GetInts("слои").Length - 1; l++)
+                                        {
+                                            var ws = c.brain.weights[l];
+                                            for (int wx = 0; wx < ws.GetLength(0); wx++)
+                                            {
+                                                for (int wy = 0; wy < ws.GetLength(1); wy++)
+                                                {
+                                                    if (l != 0 || wx != 0 || wy != 0)
+                                                        sc.Append($"={ws[wx, wy]}");
+                                                    else
+                                                        sc.Append($"{ws[wx, wy]}");
+
+                                                }
+                                            }
+                                        }
+                                        save.Add(sc.ToString());
+                                    }
+                                }
+                                for (int ox = 0; ox < width; ox++)
+                                {
+                                    for (int oy = 0; oy < height; oy++)
+                                    {
+                                        save.Add(oxmap[ox, oy].ToString());
+                                    }
+                                }
+
+                                File.WriteAllLines(s, save);
+                            }
+                            if (x > 646 && x < 666 && y > 479 && y < 499)
+                            {
+                                string s = Microsoft.VisualBasic.Interaction.InputBox("Введите название и путь к сохранению. \nВнимание! Это сбросит текущую симуляцию.", "Открытие симуляции", ".save");
+                                if (!File.Exists(s))
+                                    break;
+
+                                string[] save = File.ReadLines(".save").ToArray();
+                                seed = int.Parse(save[0]);
+                                rnduse = int.Parse(save[1]);
+                                width = int.Parse(save[3].Split('_')[0]);
+                                height = int.Parse(save[3].Split('_')[1]);
+
+                                VoidFill();
+                                for (int i = 0; i < rnduse; i++)
+                                {
+                                    rnd.Next();
+                                }
+                                step = int.Parse(save[2]);
+
+                                int st = 4;
+                                while (save[st][0] == 'f')
+                                {
+                                    var ags = save[st].Split('_');
+                                    int fx = int.Parse(ags[1]);
+                                    int fy = int.Parse(ags[2]);
+                                    float nrj = float.Parse(ags[3]);
+                                    fmap[fx, fy] = new food(new pos(fx, fy), nrj);
+
+                                    st++;
+                                }
+                                while (save[st][0] == 'c')
+                                {
+                                    var ags = save[st].Split('_');
+                                    int cx = int.Parse(ags[1]);
+                                    int cy = int.Parse(ags[2]);
+                                    int time = int.Parse(ags[3]);
+                                    float ph = float.Parse(ags[4]);
+                                    float nrj = float.Parse(ags[5]);
+                                    int genUNN = int.Parse(ags[6]);
+
+                                    var cl = new cell(cx, cy);
+                                    cl.ph = ph;
+                                    cl.nrj = nrj;
+                                    cl.brain.genUNN = genUNN;
+                                    cl.time = time;
+
+                                    int bt = 0;
+                                    var newb = Array.ConvertAll(ags[7].Split('='), it => float.Parse(it));
+
+                                    for (int l = 0; l < se.GetInts("слои").Length - 1; l++)
+                                    {
+                                        var ws = cl.brain.weights[l];
+                                        for (int wx = 0; wx < ws.GetLength(0); wx++)
+                                        {
+                                            for (int wy = 0; wy < ws.GetLength(1); wy++)
+                                            {
+                                                ws[wx, wy] = newb[bt];
+                                                bt++;
+                                            }
+                                        }
+                                        cl.brain.weights[l] = ws;
+                                    }
+
+                                    cmap[cx, cy] = cl;
+                                    cells.Add(cmap[cx, cy]);
+                                    st++;
+                                }
+
+                                for (int ox = 0; ox < width; ox++)
+                                {
+                                    for (int oy = 0; oy < height; oy++)
+                                    {
+                                        oxmap[ox, oy] = float.Parse(save[st]);
+                                        st++;
+                                    }
                                 }
                             }
                             break;
@@ -350,8 +501,8 @@ namespace NeuCells
                                 b = 0;
                                 break;
                             case 1:
-                                r = (byte)(255 * cells[i].nrj / 50);
-                                g = (byte)(255 * cells[i].nrj / 50);
+                                r = (byte)(255 * cells[i].nrj / 100);
+                                g = (byte)(255 * cells[i].nrj / 100);
                                 b = (byte)(255 * 5 / (cells[i].nrj + 1));
                                 break;
                             case 2:
@@ -375,7 +526,7 @@ namespace NeuCells
                         rect.h = sizeY - 1;
                         rect.w = sizeX - 1;
 
-                        SDL_SetRenderDrawColor(renderer, r, g, b, 255);
+                        SDL.SDL_SetRenderDrawColor(renderer, r, g, b, 255);
                         frame[cells[i].Pos.x, cells[i].Pos.y, 0] = r;
                         frame[cells[i].Pos.x, cells[i].Pos.y, 1] = g;
                         frame[cells[i].Pos.x, cells[i].Pos.y, 2] = b;
@@ -446,14 +597,30 @@ namespace NeuCells
                     SDL.SDL_SetRenderDrawColor(renderer, 220, 220, 220, 255);
                     SDL.SDL_RenderFillRect(renderer, ref rect2);
 
+                    SDL.SDL_SetRenderDrawColor(renderer, 10, 10, 200, 255);
+                    {
+                        rect2.x = 668;
+                        rect2.y = 479;
+                        rect2.w = 20;
+                        rect2.h = 20;
+                    }
+                    SDL.SDL_RenderFillRect(renderer, ref rect2);
+                    SDL.SDL_SetRenderDrawColor(renderer, 200, 10, 10, 255);
+                    {
+                        rect2.x = 646;
+                        rect2.y = 479;
+                        rect2.w = 20;
+                        rect2.h = 20;
+                    }
+                    SDL.SDL_RenderFillRect(renderer, ref rect2);
+
+
                     {
                         rect2.x = 510;
                         rect2.y = 10;
                         rect2.w = 170;
                         rect2.h = 40;
                     }
-
-
                     byte blue = (byte)(255 * (oxygen / (width * height)));
                     byte red = 0;
                     if (255 * (oxygen / (width * height)) > 255)
@@ -535,6 +702,8 @@ namespace NeuCells
 
                     SDL.SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
                     DisplayText(new pos(515, 20), 5, 3, ((int)(oxygen / (width * height) * 100)).ToString());
+                    DisplayText(new pos(673, 481), 4, 0, "s");
+                    DisplayText(new pos(651, 481), 4, 0, "o");
                 }//отрисовка интерфейса
 
                 SDL.SDL_RenderPresent(renderer);
@@ -671,6 +840,7 @@ namespace NeuCells
                 ArrayInit();
                 rndw();
                 genUNN = rnd.Next(int.MinValue, int.MaxValue);
+                rnduse++;
                 mut = 0;
             }
 
@@ -684,6 +854,7 @@ namespace NeuCells
                 if (mut > 128)
                 {
                     genUNN = rnd.Next(int.MinValue, int.MaxValue);
+                    rnduse++;
                     mut = 0;
                 }
             }
@@ -695,6 +866,7 @@ namespace NeuCells
                 layers[0][16] = activate(nrj);
                 layers[0][17] = oxygen;
                 layers[0][18] = rnd.Next(1000) / 1000;
+                rnduse++;
 
                 iter();
                 var res = layers[layers.Length - 1].ToList();
@@ -735,6 +907,7 @@ namespace NeuCells
                         for (int k = 0; k < neurons[i - 1]; k++)
                         {
                             weights[i - 1][k, j] = (rnd.Next(1000) - 500) / 1000.0F;
+                            rnduse++;
                         }
                     }
                 }
@@ -744,6 +917,7 @@ namespace NeuCells
             private void mutation(UNN nn)
             {
                 bool mt = rnd.Next(100) < se.GetConst("вероятность мутации%");
+                rnduse++;
 
                 for (int i = 1; i < neurons.Length; i++)
                 {
@@ -751,9 +925,11 @@ namespace NeuCells
                     {
                         for (int k = 0; k < neurons[i - 1]; k++)
                         {
+                            rnduse++;
                             if (rnd.Next(100) < se.GetConst("серьёзность мутации%") && mt)
                             {
                                 weights[i - 1][k, j] = (rnd.Next(1000) - 500) / 1000.0F;
+                                rnduse++;
                                 mut++;
                             }
                             else
@@ -842,7 +1018,7 @@ namespace NeuCells
                 nrj -= 0.5F;
                 oxmap[Pos.x, Pos.y] -= se.GetV("пассивное потребление кислорода", this);
 
-                if (nrj <= 0 || time > 100)
+                if (nrj <= 0 || (time > se.GetV("максимальный возраст", this) && se.GetV("максимальный возраст", this) != -1))
                 {
                     cmap[Pos.x, Pos.y] = null;
                     float e = 0;
