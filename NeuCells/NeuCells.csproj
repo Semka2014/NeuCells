@@ -63,6 +63,7 @@
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>
-    <PreBuildEvent>copy /y $(SolutionDir).setting $(ProjectDir)$(OutDir)settings</PreBuildEvent>
+    <PreBuildEvent>copy /y $(SolutionDir).setting $(ProjectDir)$(OutDir)settings
+IF NOT EXIST $(ProjectDir)$(OutDir)sequence mkdir $(ProjectDir)$(OutDir)sequence</PreBuildEvent>
   </PropertyGroup>
 </Project>
