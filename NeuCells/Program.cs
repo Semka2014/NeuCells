@@ -183,7 +183,7 @@ namespace NeuCells
 
         }
 
-        static void DisplayText(pos cpos, int size, int interval, int display)
+        static void DisplayText(pos cpos, int size, int interval, string display)
         {
             void Interp(string cmds, int pos)
             {
@@ -395,7 +395,7 @@ namespace NeuCells
 
             vismode = 2;
             visox = true;
-            recording = true;
+            recording = false;
             running = true;
 
             while (running)
@@ -604,7 +604,7 @@ namespace NeuCells
                             rect.w = sizeX;
 
                             SDL.SDL_RenderFillRect(renderer, ref rect);
-                            if (record)
+                            if (recording)
                             {
                                 frame[x, y, 0] = 0;
                                 frame[x, y, 1] = 0;
@@ -680,7 +680,7 @@ namespace NeuCells
                         rect.h = sizeY - 1;
                         rect.w = sizeX - 1;
 
-                        if (record)
+                        if (recording)
                         {
                             frame[fd.Pos.x, fd.Pos.y, 0] = 119;
                             frame[fd.Pos.x, fd.Pos.y, 1] = 135;
