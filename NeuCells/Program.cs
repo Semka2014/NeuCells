@@ -5,6 +5,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace NeuCells
@@ -371,6 +372,7 @@ namespace NeuCells
             map = new bool[width, height];
             frame = new byte[width, height, 3];
 
+            //VoidFill();
             RandomFill();
 
             sizeX = 500 / width;
@@ -682,7 +684,9 @@ namespace NeuCells
                         {
                             for (int yy = -1; yy <= 1; yy++)
                             {
-                                if ((!map[x, y] && !map[(x + xx + width) % width, (y + yy + height) % height]) || (xx == 0 && yy == 0))
+                                int nx = (x + xx + width) % width;
+                                int ny = (y + yy + height) % height;
+                                if ((!map[x, y] && !map[nx, ny] && boxmap[nx, ny] < 1) || (xx == 0 && yy == 0))
                                     s++;
                             }
                         }
@@ -691,8 +695,10 @@ namespace NeuCells
                         {
                             for (int yy = -1; yy <= 1; yy++)
                             {
-                                if ((!map[x, y] && !map[(x + xx + width) % width, (y + yy + height) % height]) || (xx == 0 && yy == 0))
-                                    boxmap[(x + xx + width) % width, (y + yy + height) % height] += ox;
+                                int nx = (x + xx + width) % width;
+                                int ny = (y + yy + height) % height;
+                                if ((!map[x, y] && !map[nx, ny] && boxmap[nx, ny] < 1) || (xx == 0 && yy == 0))
+                                    boxmap[nx, ny] += ox;
                             }
                         }
                     }
@@ -1141,7 +1147,7 @@ namespace NeuCells
             {
                 time++;
 
-                nrj -= 0.5F;
+                nrj -= se.GetV("пассивная трата энергии", this);
                 oxmap[Pos.x, Pos.y] -= se.GetV("пассивное потребление кислорода", this);
 
                 if (nrj <= 0 || (time > se.GetV("максимальный возраст", this) && se.GetV("максимальный возраст", this) != -1))
