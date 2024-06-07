@@ -436,6 +436,7 @@ namespace NeuCells
                                     RandomFill();
                                 }
                             }
+                            /*
                             if (x > 668 && x < 688 && y > 479 && y < 499)
                             {
                                 string s = Microsoft.VisualBasic.Interaction.InputBox("Введите название и путь к сохранению. \nПо умолчанию сохранится в папке с программой.", "Сохранение симуляции", ".save");
@@ -579,6 +580,7 @@ namespace NeuCells
                                     }
                                 }                          
                             }
+                            */
                             break;
                     }
                 } //UI
@@ -1287,6 +1289,7 @@ namespace NeuCells
                 brain = new UNN(dna);
             }
 
+            /*
             public cell(int x, int y, float ph, int time, float nrj, int mut, int genUNN)
             {
                 Pos.y = y;
@@ -1297,7 +1300,7 @@ namespace NeuCells
 
                 brain = new UNN(mut, genUNN);
             }
-
+            */
             public cell(int x, int y, cell parent)
             {
                 Pos.y = y;
@@ -1345,7 +1348,7 @@ namespace NeuCells
                         if (cmap[cx, cy] != null)
                         {
 
-                            if (cmap[cx, cy].brain.genUNN == brain.genUNN)
+                            if (cmap[cx, cy].dna.genUNN == dna.genUNN)
                                 sens = 0.3F;
                             else
                                 sens = 1F;
