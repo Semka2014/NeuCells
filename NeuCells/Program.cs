@@ -149,7 +149,7 @@ namespace NeuCells
         static bool running, visox, recording;
         static int seed;
 
-        public struct pos
+        struct pos
         {
             public int x;
             public int y;
@@ -831,7 +831,7 @@ namespace NeuCells
             }
         }
 
-        public static class se
+        static class se
         {
             public static string Path = "settings";
             public static Dictionary<string, bool> cons = new Dictionary<string, bool>();
@@ -909,7 +909,7 @@ namespace NeuCells
 
         }//всё для настроек
 
-        public class NN
+        class NN
         {
             static int[] layers = se.GetInts("слои");
             static SigmoidFunction sigmoid = new SigmoidFunction();
@@ -1033,7 +1033,7 @@ namespace NeuCells
             //функции активации
         }
 
-        public class food
+        class food
         {
             public pos Pos;
             public float nrj;
@@ -1050,7 +1050,7 @@ namespace NeuCells
             }
         }
 
-        public class cell
+        class cell
         {
             public pos Pos;
             public NN brain;
@@ -1112,7 +1112,7 @@ namespace NeuCells
                     return false;
                 } //смерть
 
-                //сканирование территории вокруг +логика круглой земли
+                //сканирование территории вокруг
                 for (int xx = -1; xx <= 1; xx++)
                 {
                     for (int yy = -1; yy <= 1; yy++)
