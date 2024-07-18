@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
+using Accord.Neuro;
 
 namespace NeuCells
 {
@@ -128,21 +129,21 @@ namespace NeuCells
     {
         static float[] s = new float[8];
         static float[] f = new float[8];
-        public static int width, height;
-        public static int sizeX, sizeY;
-        public static float[,] oxmap;
-        public static float[,] boxmap;
-        public static bool[,] map;
+        static int width, height;
+        static int bitmapWidth, bitmapHeight;
+        static int sizeX, sizeY;
+        static float[,] oxmap;
+        static float[,] boxmap;
         static byte[,,] frame;
 
-        public static List<cell> cells, bcells;
+        static List<cell> cells, bcells;
 
-        public static cell[,] cmap;
-        public static food[,] fmap;
+        static cell[,] cmap;
+        static food[,] fmap;
 
         static _Random rnd = new _Random();
         static SDL.SDL_Rect rect2 = new SDL.SDL_Rect();
-        public static float oxygen;
+        static float oxygen;
         static IntPtr window, renderer;
         static int step, vismode;
         static bool running, visox, recording;
@@ -356,6 +357,112 @@ namespace NeuCells
             fmap = new food[width, height];
         }
 
+        static void SaveSimulation(string s)
+        {
+            StringBuilder rn = new StringBuilder();
+            rn.Append(rnd.SeedArray[0]);
+            for (int i = 1; i < rnd.SeedArray.Length; i++)
+            {
+                rn.Append($"_{rnd.SeedArray[i]}");
+            }
+
+            List<string> save = new List<string>
+                                {
+                                    seed.ToString(),
+                                    $"{rnd.inext}_{rnd.inextp}_{rn.ToString()}",
+                                    step.ToString(),
+                                    $"{width}_{height}"
+                                };
+
+            foreach (food f in fmap)
+            {
+                if (f != null)
+                    save.Add($"f_{f.Pos.x}_{f.Pos.y}_{f.nrj}");
+            }
+            for (int i = 0; i < cells.Count; i++)
+            {
+                cell c = cells.ElementAt(i);
+
+                StringBuilder sc = new StringBuilder();
+                sc.Append($"c_{c.Pos.x}_{c.Pos.y}_{c.time}_{c.ph}_{c.nrj}_{c.brain.genUNN}_{c.brain.mut}_");
+                sc.Append(c.brain.GetSave());
+                save.Add(sc.ToString());
+            }
+            for (int ox = 0; ox < width; ox++)
+            {
+                for (int oy = 0; oy < height; oy++)
+                {
+                    save.Add(oxmap[ox, oy].ToString());
+                }
+            }
+
+            File.WriteAllLines(s, save);
+        }
+
+        static void LoadSimulation(string s)
+        {
+            string[] save = File.ReadLines(".save").ToArray();
+            seed = int.Parse(save[0]);
+            width = int.Parse(save[3].Split('_')[0]);
+            height = int.Parse(save[3].Split('_')[1]);
+
+            sizeX = 500 / width;
+            sizeY = 500 / height;
+
+            bitmapWidth = (width * 5) % 2 == 0 ? width * 5 : (width * 5) + 1;
+            bitmapHeight = (height * 5) % 2 == 0 ? height * 5 : (height * 5) + 1;
+
+            int[] sags = Array.ConvertAll(save[1].Split('_'), it => int.Parse(it));
+
+            VoidFill();
+            rnd.inext = sags[0];
+            rnd.inextp = sags[1];
+            rnd.SeedArray = sags.Skip(2).ToArray();
+
+            step = int.Parse(save[2]);
+
+            int st = 4;
+            while (save[st][0] == 'f')
+            {
+                var ags = save[st].Split('_');
+                int fx = int.Parse(ags[1]);
+                int fy = int.Parse(ags[2]);
+                float nrj = float.Parse(ags[3]);
+                fmap[fx, fy] = new food(new pos(fx, fy), nrj);
+
+                st++;
+            }
+            while (save[st][0] == 'c')
+            {
+                var ags = save[st].Split('_');
+                int cx = int.Parse(ags[1]);
+                int cy = int.Parse(ags[2]);
+                int time = int.Parse(ags[3]);
+                float ph = float.Parse(ags[4]);
+                float nrj = float.Parse(ags[5]);
+                int genUNN = int.Parse(ags[6]);
+                int mut = int.Parse(ags[7]);
+
+                int bt = 0;
+                float[] newb = Array.ConvertAll(ags[8].Split('='), it => float.Parse(it));
+
+                cell cl = new cell(cx, cy, ph, time, nrj, mut, genUNN, newb);
+
+                cmap[cx, cy] = cl;
+                cells.Add(cmap[cx, cy]);
+                st++;
+            }
+
+            for (int ox = 0; ox < width; ox++)
+            {
+                for (int oy = 0; oy < height; oy++)
+                {
+                    oxmap[ox, oy] = float.Parse(save[st]);
+                    st++;
+                }
+            }
+        }
+
         static void Main(string[] args)
         {
             se.Load();
@@ -369,10 +476,8 @@ namespace NeuCells
             cmap = new cell[width, height];
             fmap = new food[width, height];
             oxmap = new float[width, height];
-            map = new bool[width, height];
             frame = new byte[width, height, 3];
 
-            //VoidFill();
             RandomFill();
 
             sizeX = 500 / width;
@@ -383,7 +488,7 @@ namespace NeuCells
 
             vismode = 2;
             visox = true;
-            recording = true;
+            recording = false;
             running = true;
 
             while (running)
@@ -401,20 +506,20 @@ namespace NeuCells
                             if (x > 510 && x < 680 && y > 60 && y < 100)
                             {
                                 vismode = (vismode + 1) % 4;
-                            }
+                            } //change vismod
                             if (x > 510 && x < 680 && y > 10 && y < 50)
                             {
                                 visox = !visox;
-                            }
+                            } //on-off oxygen visualization
                             if (x > 510 && x < 680 && y > 110 && y < 140)
                             {
                                 recording = !recording;
-                            }
+                            } //start-stop recording
                             if (x > 510 && x < 680 && y > 160 && y < 200)
                             {
                                 seed = -1;
                                 RandomFill();
-                            }
+                            } //restart
                             if (x > 510 && x < 680 && y > 210 && y < 260)
                             {
                                 string s = Microsoft.VisualBasic.Interaction.InputBox("Введите сид симуляции.\nВнимание! Это сбросит текущую симуляцию.", "Смена сида симуляции", seed.ToString());
@@ -423,153 +528,26 @@ namespace NeuCells
                                     seed = n;
                                     RandomFill();
                                 }
-                            }
+                            } //change seed
                             if (x > 668 && x < 688 && y > 479 && y < 499)
                             {
                                 string s = Microsoft.VisualBasic.Interaction.InputBox("Введите название и путь к сохранению. \nПо умолчанию сохранится в папке с программой.", "Сохранение симуляции", ".save");
                                 if (s == "")
                                     break;
 
-                                StringBuilder rn = new StringBuilder();
-                                rn.Append(rnd.SeedArray[0]);
-                                for (int i = 1; i < rnd.SeedArray.Length; i++)
-                                {
-                                    rn.Append($"_{rnd.SeedArray[i]}");
-                                }
-
-                                List<string> save = new List<string>
-                                {
-                                    seed.ToString(),
-                                    $"{rnd.inext}_{rnd.inextp}_{rn.ToString()}",
-                                    step.ToString(),
-                                    $"{width}_{height}"
-                                };
-
-                                foreach(food f in fmap)
-                                {
-                                    if (f != null)
-                                        save.Add($"f_{f.Pos.x}_{f.Pos.y}_{f.nrj}");
-                                }
-                                for (int i = 0; i < cells.Count; i++)
-                                {
-                                    cell c = cells.ElementAt(i);
-
-                                    StringBuilder sc = new StringBuilder();
-                                    sc.Append($"c_{c.Pos.x}_{c.Pos.y}_{c.time}_{c.ph}_{c.nrj}_{c.brain.genUNN}_{c.brain.mut}_");
-                                    for (int l = 0; l < se.GetInts("слои").Length - 1; l++)
-                                    {
-                                        var ws = c.brain.weights[l];
-                                        for (int wx = 0; wx < ws.GetLength(0); wx++)
-                                        {
-                                            for (int wy = 0; wy < ws.GetLength(1); wy++)
-                                            {
-                                                if (l != 0 || wx != 0 || wy != 0)
-                                                    sc.Append($"={ws[wx, wy]}");
-                                                else
-                                                    sc.Append($"{ws[wx, wy]}");
-
-                                            }
-                                        }
-                                    }
-                                    save.Add(sc.ToString());
-                                }
-                                for (int ox = 0; ox < width; ox++)
-                                {
-                                    for (int oy = 0; oy < height; oy++)
-                                    {
-                                        save.Add(oxmap[ox, oy].ToString());
-                                    }
-                                }
-
-                                File.WriteAllLines(s, save);
-
-                                bcells = cells;
-                                
-                            }
+                                SaveSimulation(s);
+                            } //save
                             if (x > 646 && x < 666 && y > 479 && y < 499)
                             {
                                 string s = Microsoft.VisualBasic.Interaction.InputBox("Введите название и путь к сохранению. \nВнимание! Это сбросит текущую симуляцию.", "Открытие симуляции", ".save");
                                 if (!File.Exists(s))
                                     break;
 
-                                string[] save = File.ReadLines(".save").ToArray();
-                                seed = int.Parse(save[0]);
-                                width = int.Parse(save[3].Split('_')[0]);
-                                height = int.Parse(save[3].Split('_')[1]);
-
-                                sizeX = 500 / width;
-                                sizeY = 500 / height;
-
-                                bitmapWidth = (width * 5) % 2 == 0 ? width * 5 : (width * 5) + 1;
-                                bitmapHeight = (height * 5) % 2 == 0 ? height * 5 : (height * 5) + 1;
-
-                                int[] sags = Array.ConvertAll(save[1].Split('_'), it => int.Parse(it));
-
-                                VoidFill();
-                                rnd.inext = sags[0];
-                                rnd.inextp = sags[1];
-                                rnd.SeedArray = sags.Skip(2).ToArray();
-
-                                step = int.Parse(save[2]);
-
-                                int st = 4;
-                                while (save[st][0] == 'f')
-                                {
-                                    var ags = save[st].Split('_');
-                                    int fx = int.Parse(ags[1]);
-                                    int fy = int.Parse(ags[2]);
-                                    float nrj = float.Parse(ags[3]);
-                                    fmap[fx, fy] = new food(new pos(fx, fy), nrj);
-
-                                    st++;
-                                }
-                                while (save[st][0] == 'c')
-                                {
-                                    var ags = save[st].Split('_');
-                                    int cx = int.Parse(ags[1]);
-                                    int cy = int.Parse(ags[2]);
-                                    int time = int.Parse(ags[3]);
-                                    float ph = float.Parse(ags[4]);
-                                    float nrj = float.Parse(ags[5]);
-                                    int genUNN = int.Parse(ags[6]);
-                                    int mut = int.Parse(ags[7]);
-
-                                    cell cl = new cell(cx, cy, ph, time, nrj, mut, genUNN);
-
-                                    int bt = 0;
-                                    float[] newb = Array.ConvertAll(ags[8].Split('='), it => float.Parse(it));
-
-                                    for (int l = 0; l < se.GetInts("слои").Length - 1; l++)
-                                    {
-                                        var ws = cl.brain.weights[l];
-                                        for (int wx = 0; wx < ws.GetLength(0); wx++)
-                                        {
-                                            for (int wy = 0; wy < ws.GetLength(1); wy++)
-                                            {
-                                                ws[wx, wy] = newb[bt];
-                                                bt++;
-                                            }
-                                        }
-                                        cl.brain.weights[l] = ws;
-                                    }
-
-                                    cmap[cx, cy] = cl;
-                                    cells.Add(cmap[cx, cy]);
-                                    st++;
-                                }
-
-                                for (int ox = 0; ox < width; ox++)
-                                {
-                                    for (int oy = 0; oy < height; oy++)
-                                    {
-                                        oxmap[ox, oy] = float.Parse(save[st]);
-                                        st++;
-                                    }
-                                }                          
-                            }
+                                LoadSimulation(s);                   
+                            } //load
                             break;
                     }
-                } //UI
+                } //UI events
 
                 SDL.SDL_SetRenderDrawColor(renderer, 1, 1, 1, 255);
                 SDL.SDL_RenderClear(renderer);
@@ -596,8 +574,6 @@ namespace NeuCells
                         }
                     }
                 }
-                
-                Array.Clear(map, 0, map.Length);
                 
                 bcells = new List<cell>();
                 for (int i = 0; i < cells.Count; i++)
@@ -632,8 +608,6 @@ namespace NeuCells
                                 b = (byte)(float)(255 * cells[i].time / 1000);
                                 break;
                         }
-
-                        map[cells[i].Pos.x, cells[i].Pos.y] = true;
 
                         SDL.SDL_Rect rect = new SDL.SDL_Rect();
                         rect.x = cells[i].Pos.x * sizeX;
@@ -671,7 +645,7 @@ namespace NeuCells
                     }
                 } //отрисовка еды
 
-                //кислородные штуки +логика круглой земли
+                //кислородные штуки
                 oxygen = 0;
                 boxmap = new float[width, height];
                 for (int x = 0; x < width; x++)
@@ -686,7 +660,8 @@ namespace NeuCells
                             {
                                 int nx = (x + xx + width) % width;
                                 int ny = (y + yy + height) % height;
-                                if ((!map[x, y] && !map[nx, ny] && boxmap[nx, ny] < 1) || (xx == 0 && yy == 0))
+                                bool map = (cmap[x, y] != null || fmap[x, y] != null) && (cmap[nx, ny] != null || fmap[nx, ny] != null);
+                                if ((!map && boxmap[nx, ny] < 1) || (xx == 0 && yy == 0))
                                     s++;
                             }
                         }
@@ -697,7 +672,8 @@ namespace NeuCells
                             {
                                 int nx = (x + xx + width) % width;
                                 int ny = (y + yy + height) % height;
-                                if ((!map[x, y] && !map[nx, ny] && boxmap[nx, ny] < 1) || (xx == 0 && yy == 0))
+                                bool map = (cmap[x, y] != null || fmap[x, y] != null) && (cmap[nx, ny] != null || fmap[nx, ny] != null);
+                                if ((!map && boxmap[nx, ny] < 1) || (xx == 0 && yy == 0))
                                     boxmap[nx, ny] += ox;
                             }
                         }
@@ -935,45 +911,71 @@ namespace NeuCells
 
         public class UNN
         {
-            private float[][] layers = new float[se.GetInts("слои").Length /* количество слоёв*/][];
-            private int[] neurons = se.GetInts("слои"); // количество нейронов на каждом слое
-            public float[][,] weights = new float[se.GetInts("слои").Length - 1][,];
-            public int genUNN;
-            public int mut;
+            static int[] layers = se.GetInts("слои");
+            static SigmoidFunction sigmoid = new SigmoidFunction();
+            ActivationNetwork network = new ActivationNetwork(sigmoid, layers[0], layers.Skip(1).ToArray());
+            public int genUNN, mut;
 
-            private void ArrayInit()
+            public string GetSave()
             {
-                for (int i = 0; i < neurons.Length; i++) // выставляем количество нейронов на каждом слое
+                StringBuilder sb = new StringBuilder();
+
+                for (int layerIndex = 0; layerIndex < network.Layers.Length; layerIndex++)
                 {
-                    layers[i] = new float[neurons[i]];
+                    for (int neuronIndex = 0; neuronIndex < network.Layers[layerIndex].Neurons.Length; neuronIndex++)
+                    {
+                        for (int weightIndex = 0; weightIndex < network.Layers[layerIndex].Neurons[neuronIndex].Weights.Length; weightIndex++)
+                        {
+                            double w = network.Layers[layerIndex].Neurons[neuronIndex].Weights[weightIndex];
+                            if (layerIndex != 0 || neuronIndex != 0 || weightIndex != 0)
+                                sb.Append($"={w}");
+                            else
+                                sb.Append($"{w}");
+                        }
+                    }
                 }
 
-                for (int i = 0; i < weights.Length; i++) // выставляем количество связей
-                {
-                    weights[i] = new float[neurons[i], neurons[i + 1]];
-                }
+                return sb.ToString();
             }
 
             public UNN()
             {
-                ArrayInit();
+                foreach (var layer in network.Layers)
+                {
+                    foreach (var neuron in layer.Neurons)
+                    {
+                        for (int i = 0; i < neuron.Weights.Length; i++)
+                        {
+                            neuron.Weights[i] = (rnd.Next(1000) - 500) / 1000.0F;
+                        }
+                    }
+                }
 
-                rndw();
                 genUNN = rnd.Next(int.MinValue, int.MaxValue);
-
                 mut = 0;
             }
 
-            public UNN(int mutt, int gen)
+            public UNN(int mutt, int gen, float[] newb)
             {
-                ArrayInit();
                 mut = mutt;
                 genUNN = gen;
-            }
+
+                int i = 0;
+                for (int layerIndex = 0; layerIndex < network.Layers.Length; layerIndex++)
+                {
+                    for (int neuronIndex = 0; neuronIndex < network.Layers[layerIndex].Neurons.Length; neuronIndex++)
+                    {
+                        for (int weightIndex = 0; weightIndex < network.Layers[layerIndex].Neurons[neuronIndex].Weights.Length; weightIndex++)
+                        {
+                            network.Layers[layerIndex].Neurons[neuronIndex].Weights[weightIndex] = newb[i];
+                            i++;
+                        }
+                    }
+                }
+            } //for save-load
 
             public UNN(cell parent)
             {
-                ArrayInit();
                 genUNN = parent.brain.genUNN;
                 mut = parent.brain.mut;
                 mutation(parent.brain);
@@ -987,14 +989,14 @@ namespace NeuCells
 
             public int[] th(float[] en, float[] fd, float nrj, float oxygen)
             {
-                Array.Copy(en, layers[0], 8);
-                Array.Copy(fd, 0, layers[0], 8, 8);
-                layers[0][16] = activate(nrj);
-                layers[0][17] = oxygen;
-                layers[0][18] = rnd.Next(1000) / 1000;
+                double[] input = new double[layers[0]];
+                Array.Copy(en, input, 8);
+                Array.Copy(fd, 0, input, 8, 8);
+                input[16] = sigmoid.Function(nrj);
+                input[17] = oxygen;
+                input[18] = rnd.Next(1000) / 1000;
 
-                iter();
-                var res = layers[layers.Length - 1].ToList();
+                var res = network.Compute(input).ToList();
                 int[] cmds = new int[26];
                 for (int i = 0; i < res.Count; i++)
                 {
@@ -1006,81 +1008,28 @@ namespace NeuCells
                 return cmds;
             }
 
-            private void iter()
-            {
-                for (int i = 1; i < neurons.Length; i++)
-                {
-                    for (int j = 0; j < neurons[i]; j++)
-                    {
-                        layers[i][j] = 0;
-                        for (int k = 0; k < neurons[i - 1]; k++)
-                        {
-                            layers[i][j] += layers[i - 1][k] * weights[i - 1][k, j];
-                        }
-
-                        layers[i][j] = activate(layers[i][j] + 1);
-                    }
-                }
-            }
-
-            private void rndw()
-            {
-                for (int i = 1; i < neurons.Length; i++)
-                {
-                    for (int j = 0; j < neurons[i]; j++)
-                    {
-                        for (int k = 0; k < neurons[i - 1]; k++)
-                        {
-                            weights[i - 1][k, j] = (rnd.Next(1000) - 500) / 1000.0F;
-                        }
-                    }
-                }
-
-            }
-
             private void mutation(UNN nn)
             {
                 bool mt = rnd.Next(100) < se.GetConst("вероятность мутации%");
-
-                for (int i = 1; i < neurons.Length; i++)
+                //прошу прощения за эти трехэтажные адресса :)
+                for (int layerIndex = 0; layerIndex < network.Layers.Length; layerIndex++)
                 {
-                    for (int j = 0; j < neurons[i]; j++)
+                    for (int neuronIndex = 0; neuronIndex < network.Layers[layerIndex].Neurons.Length; neuronIndex++)
                     {
-                        for (int k = 0; k < neurons[i - 1]; k++)
+                        for (int weightIndex = 0; weightIndex < network.Layers[layerIndex].Neurons[neuronIndex].Weights.Length; weightIndex++)
                         {
                             if (rnd.Next(100) < se.GetConst("серьёзность мутации%") && mt)
                             {
-                                weights[i - 1][k, j] = (rnd.Next(1000) - 500) / 1000.0F;
+                                network.Layers[layerIndex].Neurons[neuronIndex].Weights[weightIndex] = (rnd.Next(1000) - 500) / 1000.0F;
                                 mut++;
                             }
                             else
-                                weights[i - 1][k, j] = nn.weights[i - 1][k, j];
+                                network.Layers[layerIndex].Neurons[neuronIndex].Weights[weightIndex] = nn.network.Layers[layerIndex].Neurons[neuronIndex].Weights[weightIndex];
                         }
                     }
                 }
             }
 
-            static float activate(float x)
-            {
-                switch (se.GetConst("функция активации"))
-                {
-                    case 1:
-                        return (float)Math.Tanh(x);
-                    case 2:
-                        if (x < -1)
-                            return -1;
-                        else if (x > 1)
-                            return 1;
-                        else
-                            return x;
-                    case 3:
-                        return (float)Math.Sin(x);
-                    default:
-                        return x;
-
-                }
-                
-            }
             //функции активации
         }
 
@@ -1120,7 +1069,7 @@ namespace NeuCells
                 brain = new UNN();
             }
 
-            public cell(int x, int y, float ph, int time, float nrj, int mut, int genUNN)
+            public cell(int x, int y, float ph, int time, float nrj, int mut, int genUNN, float[] newb)
             {
                 Pos.y = y;
                 Pos.x = x;
@@ -1128,8 +1077,8 @@ namespace NeuCells
                 this.time = time;
                 this.nrj = nrj;
 
-                brain = new UNN(mut, genUNN);
-            }
+                brain = new UNN(mut, genUNN, newb);
+            } //for save-load
 
             public cell(int x, int y, cell parent)
             {
@@ -1252,8 +1201,8 @@ namespace NeuCells
                 }
 
                 int[] cmds = brain.th(s, f, nrj, oxmap[Pos.x, Pos.y]);
-
-                for (int i = 0; i < 2; i++)
+                
+                for (int i = 0; i < 5; i++)
                 {
                     switch (cmds[i])
                     {
