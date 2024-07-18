@@ -8,6 +8,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Accord.Neuro;
+using Accord.Neuro.Learning;
 
 namespace NeuCells
 {
@@ -91,6 +92,16 @@ namespace NeuCells
         public virtual int Next()
         {
             return InternalSample();
+        }
+
+        public bool NextProb(int prob)
+        {
+            return Next(100) < prob;
+        }
+
+        public double NextDouble()
+        {
+            return Next(1000000000) / 1000000000D;
         }
 
         private double GetSampleForLargeRange()
@@ -384,7 +395,7 @@ namespace NeuCells
                 cell c = cells.ElementAt(i);
 
                 StringBuilder sc = new StringBuilder();
-                sc.Append($"c_{c.Pos.x}_{c.Pos.y}_{c.time}_{c.ph}_{c.nrj}_{c.brain.genUNN}_{c.brain.mut}_");
+                //sc.Append($"c_{c.Pos.x}_{c.Pos.y}_{c.time}_{c.ph}_{c.nrj}_{c.brain.genUNN}_{c.brain.mut}_");
                 sc.Append(c.brain.GetSave());
                 save.Add(sc.ToString());
             }
@@ -597,7 +608,7 @@ namespace NeuCells
                                 b = (byte)(255 * 5 / (cells[i].nrj + 1));
                                 break;
                             case 2:
-                                Random rc = new Random(cells[i].brain.genUNN);
+                                Random rc = new Random(cells[i].dna.Gen);
                                 r = (byte)(rc.Next(5, 25) * 10);
                                 g = (byte)(rc.Next(5, 25) * 10);
                                 b = (byte)(rc.Next(5, 25) * 10);
@@ -914,7 +925,6 @@ namespace NeuCells
             static int[] layers = se.GetInts("слои");
             static SigmoidFunction sigmoid = new SigmoidFunction();
             ActivationNetwork network = new ActivationNetwork(sigmoid, layers[0], layers.Skip(1).ToArray());
-            public int genUNN, mut;
 
             public string GetSave()
             {
@@ -938,7 +948,7 @@ namespace NeuCells
                 return sb.ToString();
             }
 
-            public NN()
+            public NN(DNA dna)
             {
                 foreach (var layer in network.Layers)
                 {
@@ -946,20 +956,25 @@ namespace NeuCells
                     {
                         for (int i = 0; i < neuron.Weights.Length; i++)
                         {
-                            neuron.Weights[i] = (rnd.Next(1000) - 500) / 1000.0F;
+                            neuron.Weights[i] = rnd.NextDouble();
                         }
                     }
                 }
+                
+                BackPropagationLearning teacher = new BackPropagationLearning(network) 
+                {
+                    Momentum = dna.momuntum,
+                    LearningRate = dna.rate
+                };
 
-                genUNN = rnd.Next(int.MinValue, int.MaxValue);
-                mut = 0;
+                for (int i = 0; i < 10; i++)
+                {
+                    teacher.RunEpoch(dna.input, dna.output);
+                }
             }
 
             public NN(int mutt, int gen, float[] newb)
             {
-                mut = mutt;
-                genUNN = gen;
-
                 int i = 0;
                 for (int layerIndex = 0; layerIndex < network.Layers.Length; layerIndex++)
                 {
@@ -974,6 +989,7 @@ namespace NeuCells
                 }
             } //for save-load
 
+            /*
             public NN(cell parent)
             {
                 genUNN = parent.brain.genUNN;
@@ -986,7 +1002,7 @@ namespace NeuCells
                     mut = 0;
                 }
             }
-
+            */
             public int[] th(float[] en, float[] fd, float nrj, float oxygen)
             {
                 double[] input = new double[layers[0]];
@@ -1008,6 +1024,7 @@ namespace NeuCells
                 return cmds;
             }
 
+            /*
             private void mutation(NN nn)
             {
                 bool mt = rnd.Next(100) < se.GetConst("вероятность мутации%");
@@ -1020,7 +1037,7 @@ namespace NeuCells
                         {
                             if (rnd.Next(100) < se.GetConst("серьёзность мутации%") && mt)
                             {
-                                network.Layers[layerIndex].Neurons[neuronIndex].Weights[weightIndex] = (rnd.Next(1000) - 500) / 1000.0F;
+                                network.Layers[layerIndex].Neurons[neuronIndex].Weights[weightIndex] = rnd.NextDouble();
                                 mut++;
                             }
                             else
@@ -1029,8 +1046,95 @@ namespace NeuCells
                     }
                 }
             }
+            */
+            
+        }
 
-            //функции активации
+        class DNA
+        {
+            static int[] layers = se.GetInts("слои");
+            public double[][] input, output;
+            public double rate, momuntum;
+            public int Gen;
+            private readonly int length;
+            private int mut;
+
+            public DNA()
+            {
+                Gen = rnd.Next(int.MinValue, int.MaxValue);
+                rate = rnd.NextDouble() / 10;
+                momuntum = rnd.NextDouble() / 10;
+                length = rnd.Next(10, 100);
+
+                input = new double[length][];
+                output = new double[length][];
+
+                for (int i = 0; i < length; i++)
+                {
+                    input[i] = new double[layers[0]];
+                    output[i] = new double[layers[layers.Length - 1]];
+
+                    for (int j = 0; j < input[i].Length; j++)
+                    {
+                        input[i][j] = rnd.NextDouble();
+                    }
+                    for (int j = 0; j < output[i].Length; j++)
+                    {
+                        output[i][j] = rnd.NextDouble();
+                    }
+                }
+            }
+
+            public DNA(cell parent)
+            {
+                bool mt = rnd.NextProb((int)se.GetConst("вероятность мутации%"));
+
+                Gen = parent.dna.Gen;
+                mut = parent.dna.mut;
+                length = mt && rnd.NextProb((int)se.GetConst("серьёзность мутации%")) ? rnd.Next(10, 100) : parent.dna.length;
+                momuntum = mt && rnd.NextProb((int)se.GetConst("серьёзность мутации%")) ? rnd.NextDouble() / 10 : parent.dna.momuntum;
+                rate = mt && rnd.NextProb((int)se.GetConst("серьёзность мутации%")) ? rnd.NextDouble() / 10 : parent.dna.rate;
+
+                input = new double[length][];
+                output = new double[length][];
+
+                mutation(parent.dna, mt);
+                if (mut > 128)
+                {
+                    Gen = rnd.Next(int.MinValue, int.MaxValue);
+                    mut = 0;
+                }
+            }
+
+            void mutation(DNA pdna, bool mt)
+            {
+                for (int i = 0; i < Math.Max(length, pdna.length); i++)
+                {
+                    input[i] = new double[layers[0]];
+                    output[i] = new double[layers[layers.Length - 1]];
+
+                    for (int j = 0; j < input[i].Length; j++)
+                    {
+                        if (mt && rnd.NextProb((int)se.GetConst("серьёзность мутации%")) || i > pdna.length)
+                        {
+                            input[i][j] = rnd.NextDouble();
+                            mut++;
+                        }
+                        else
+                            input[i][j] = pdna.input[i][j];
+                    }
+                    for (int j = 0; j < output[i].Length; j++)
+                    {
+                        if (mt && rnd.NextProb((int)se.GetConst("серьёзность мутации%")) || i > pdna.length)
+                        {
+                            output[i][j] = rnd.NextDouble();
+                            mut++;
+                        }
+                        else
+                            output[i][j] = pdna.output[i][j];
+                    }
+                }
+            }
         }
 
         class food
@@ -1054,6 +1158,7 @@ namespace NeuCells
         {
             public pos Pos;
             public NN brain;
+            public DNA dna;
             public float nrj;
             public float ph;
             public int time;
@@ -1066,7 +1171,8 @@ namespace NeuCells
                 nrj = 6;
                 time = 0;
 
-                brain = new NN();
+                dna = new DNA();
+                brain = new NN(dna);
             }
 
             public cell(int x, int y, float ph, int time, float nrj, int mut, int genUNN, float[] newb)
@@ -1089,7 +1195,8 @@ namespace NeuCells
                 ph = parent.ph;
                 time = 0;
 
-                brain = new NN(parent);
+                dna = new DNA(parent);
+                brain = new NN(dna);
             }
 
             public bool step()
@@ -1123,7 +1230,7 @@ namespace NeuCells
                         float sens = 0.1F;
                         if (cmap[cx, cy] != null)
                         {
-                            if (cmap[cx, cy].brain.genUNN == brain.genUNN)
+                            if (cmap[cx, cy].dna.Gen == dna.Gen)
                                 sens = 0.3F;
                             else
                                 sens = 1F;
