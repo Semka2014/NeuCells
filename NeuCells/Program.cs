@@ -909,7 +909,7 @@ namespace NeuCells
 
         }//всё для настроек
 
-        public class UNN
+        public class NN
         {
             static int[] layers = se.GetInts("слои");
             static SigmoidFunction sigmoid = new SigmoidFunction();
@@ -938,7 +938,7 @@ namespace NeuCells
                 return sb.ToString();
             }
 
-            public UNN()
+            public NN()
             {
                 foreach (var layer in network.Layers)
                 {
@@ -955,7 +955,7 @@ namespace NeuCells
                 mut = 0;
             }
 
-            public UNN(int mutt, int gen, float[] newb)
+            public NN(int mutt, int gen, float[] newb)
             {
                 mut = mutt;
                 genUNN = gen;
@@ -974,7 +974,7 @@ namespace NeuCells
                 }
             } //for save-load
 
-            public UNN(cell parent)
+            public NN(cell parent)
             {
                 genUNN = parent.brain.genUNN;
                 mut = parent.brain.mut;
@@ -1008,7 +1008,7 @@ namespace NeuCells
                 return cmds;
             }
 
-            private void mutation(UNN nn)
+            private void mutation(NN nn)
             {
                 bool mt = rnd.Next(100) < se.GetConst("вероятность мутации%");
                 //прошу прощения за эти трехэтажные адресса :)
@@ -1053,7 +1053,7 @@ namespace NeuCells
         public class cell
         {
             public pos Pos;
-            public UNN brain;
+            public NN brain;
             public float nrj;
             public float ph;
             public int time;
@@ -1066,7 +1066,7 @@ namespace NeuCells
                 nrj = 6;
                 time = 0;
 
-                brain = new UNN();
+                brain = new NN();
             }
 
             public cell(int x, int y, float ph, int time, float nrj, int mut, int genUNN, float[] newb)
@@ -1077,7 +1077,7 @@ namespace NeuCells
                 this.time = time;
                 this.nrj = nrj;
 
-                brain = new UNN(mut, genUNN, newb);
+                brain = new NN(mut, genUNN, newb);
             } //for save-load
 
             public cell(int x, int y, cell parent)
@@ -1089,7 +1089,7 @@ namespace NeuCells
                 ph = parent.ph;
                 time = 0;
 
-                brain = new UNN(parent);
+                brain = new NN(parent);
             }
 
             public bool step()
